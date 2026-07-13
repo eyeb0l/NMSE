@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace NMSE.Core;
@@ -86,14 +87,25 @@ public static class UpdateService
         => remote.CompareTo(current) > 0;
 
     /// <summary>
-    /// Extracts the first <c>.zip</c> asset download URL from a GitHub
-    /// Releases API JSON element parsed with <see cref="System.Text.Json"/>.
+    /// Extracts the best <c>.zip</c> asset for the current OS and process
+    /// architecture. Legacy, unlabelled release ZIPs remain supported.
     /// </summary>
     public static string? FindAssetDownloadUrl(JsonElement release)
+        => FindAssetDownloadUrl(release, GetCurrentRuntimeIdentifier());
+
+    /// <summary>
+    /// Extracts the best release ZIP for a portable runtime identifier such
+    /// as <c>osx-arm64</c>, <c>osx-x64</c>, <c>win-x64</c>, or <c>linux-x64</c>.
+    /// </summary>
+    internal static string? FindAssetDownloadUrl(JsonElement release, string runtimeIdentifier)
     {
         if (!release.TryGetProperty("assets", out var assets)
             || assets.ValueKind != JsonValueKind.Array)
             return null;
+
+        string normalizedRid = runtimeIdentifier.Trim().ToLowerInvariant();
+        var matchingAssets = new List<(int Score, int Index, string Url)>();
+        int index = 0;
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -103,11 +115,99 @@ public static class UpdateService
             if (name != null && url != null
                 && name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
-                return url;
+                int score = GetAssetMatchScore(name, normalizedRid);
+                if (score >= 0)
+                    matchingAssets.Add((score, index, url));
             }
+
+            index++;
         }
 
-        return null;
+        return matchingAssets
+            .OrderByDescending(candidate => candidate.Score)
+            .ThenBy(candidate => candidate.Index)
+            .Select(candidate => candidate.Url)
+            .FirstOrDefault();
+    }
+
+    private static string GetCurrentRuntimeIdentifier()
+    {
+        string os = OperatingSystem.IsMacOS()
+            ? "osx"
+            : OperatingSystem.IsWindows()
+                ? "win"
+                : OperatingSystem.IsLinux()
+                    ? "linux"
+                    : "unknown";
+
+        string architecture = RuntimeInformation.ProcessArchitecture switch
+        {
+            Architecture.Arm64 => "arm64",
+            Architecture.X64 => "x64",
+            Architecture.Arm => "arm",
+            Architecture.X86 => "x86",
+            _ => RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant(),
+        };
+
+        return $"{os}-{architecture}";
+    }
+
+    private static int GetAssetMatchScore(string assetName, string runtimeIdentifier)
+    {
+        string normalizedName = assetName.ToLowerInvariant();
+        string[] ridParts = runtimeIdentifier.Split('-', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (ridParts.Length != 2)
+            return 0;
+
+        string targetOs = ridParts[0];
+        string targetArchitecture = ridParts[1];
+        string[] osAliases = targetOs switch
+        {
+            "osx" => ["osx", "macos", "mac"],
+            "win" => ["win", "windows"],
+            "linux" => ["linux"],
+            _ => [targetOs],
+        };
+
+        bool hasTargetOs = osAliases.Any(alias => ContainsToken(normalizedName, alias));
+        bool hasTargetArchitecture = ContainsToken(normalizedName, targetArchitecture);
+
+        string[] allOsTokens = ["osx", "macos", "mac", "win", "windows", "linux"];
+        string[] allArchitectureTokens = ["arm64", "x64", "x86", "arm"];
+        bool hasOtherOs = allOsTokens
+            .Where(token => !osAliases.Contains(token, StringComparer.Ordinal))
+            .Any(token => ContainsToken(normalizedName, token));
+        bool hasOtherArchitecture = allArchitectureTokens
+            .Where(token => token != targetArchitecture)
+            .Any(token => ContainsToken(normalizedName, token));
+
+        if (hasOtherOs || hasOtherArchitecture)
+            return -1;
+        if (normalizedName.Contains(runtimeIdentifier, StringComparison.Ordinal))
+            return 300;
+        if (hasTargetOs && hasTargetArchitecture)
+            return 200;
+        if (hasTargetOs || hasTargetArchitecture)
+            return 100;
+
+        // Compatibility with the historic NMSE-x.y.z-Release.zip asset.
+        return 0;
+    }
+
+    private static bool ContainsToken(string value, string token)
+    {
+        int index = 0;
+        while ((index = value.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
+        {
+            bool startsAtBoundary = index == 0 || !char.IsLetterOrDigit(value[index - 1]);
+            int end = index + token.Length;
+            bool endsAtBoundary = end == value.Length || !char.IsLetterOrDigit(value[end]);
+            if (startsAtBoundary && endsAtBoundary)
+                return true;
+            index = end;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -137,7 +237,7 @@ public static class UpdateService
 
     /// <summary>
     /// Converts a Markdown string to readable plain text suitable for display
-    /// in a WinForms <see cref="System.Windows.Forms.RichTextBox"/>.
+    /// in a fixed-width rich text control.
     /// Handles the common patterns present in GitHub release notes without any
     /// third-party dependencies: ATX headings, unordered lists, blockquotes,
     /// inline emphasis, links (with URLs shown inline), inline code, strikethrough,
@@ -298,8 +398,8 @@ public static class UpdateService
     /// GitHub's web UI auto-links bare <c>#N</c> tokens, but the raw API body contains only
     /// the token text.  This method embeds RTF <c>\field</c> hyperlink records so the short
     /// label is preserved in the rendered output while the full URL is stored in the hidden
-    /// <c>\fldinst{HYPERLINK …}</c> instruction.  <see cref="System.Windows.Forms.RichTextBox"/>
-    /// fires its <c>LinkClicked</c> event when such a field is clicked; the event argument
+    /// <c>\fldinst{HYPERLINK …}</c> instruction. A compatible rich text viewer fires its
+    /// link-click event for such fields; the event argument
     /// carries the <em>displayed</em> text (e.g. <c>#64</c>), so the caller should resolve
     /// <c>#N</c> patterns back to a URL in the handler.
     /// </para>

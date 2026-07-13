@@ -22,34 +22,60 @@ internal static class MxmlRewardEditor
     /// <summary>
     /// The expected relative path from the Steam install directory to the MXML settings file.
     /// </summary>
-    internal const string SteamRelativePath = @"steamapps\common\No Man's Sky\Binaries\SETTINGS\" + MxmlFileName;
+    internal static readonly string SteamRelativePath = Path.Combine(
+        "steamapps", "common", "No Man's Sky", "Binaries", "SETTINGS", MxmlFileName);
 
     /// <summary>
-    /// Attempts to auto-detect the full path to GCUSERSETTINGSDATA.MXML via Steam registry.
+    /// Attempts to auto-detect the full path to GCUSERSETTINGSDATA.MXML from
+    /// the platform's Steam installation.
     /// </summary>
     /// <returns>The full path if found and the file exists, otherwise null.</returns>
     internal static string? AutoDetectMxmlPath()
     {
-        string? steamPath = GetSteamInstallPath();
-        if (string.IsNullOrEmpty(steamPath))
-            return null;
+        return FindMxmlPath(GetSteamInstallPaths());
+    }
 
-        string mxmlPath = Path.Combine(steamPath, SteamRelativePath);
-        return File.Exists(mxmlPath) ? mxmlPath : null;
+    /// <summary>Returns the first existing MXML file below the supplied Steam roots.</summary>
+    internal static string? FindMxmlPath(IEnumerable<string> steamInstallPaths)
+    {
+        foreach (string steamPath in steamInstallPaths)
+        {
+            if (string.IsNullOrWhiteSpace(steamPath))
+                continue;
+
+            string mxmlPath = Path.Combine(steamPath, SteamRelativePath);
+            if (File.Exists(mxmlPath))
+                return mxmlPath;
+        }
+
+        return null;
     }
 
     /// <summary>
-    /// Reads the Steam install path from the Windows registry.
+    /// Gets candidate Steam roots from the Windows registry or the standard
+    /// macOS user installation directory.
     /// </summary>
-    private static string? GetSteamInstallPath()
+    private static IEnumerable<string> GetSteamInstallPaths()
     {
-        // On non-Windows platforms (build/test), registry is not available.
-        if (!OperatingSystem.IsWindows())
-            return null;
+        if (OperatingSystem.IsWindows())
+        {
+            string? registryPath = ReadRegistryValue(@"SOFTWARE\Wow6432Node\Valve\Steam", "InstallPath")
+                ?? ReadRegistryValue(@"SOFTWARE\Valve\Steam", "InstallPath");
+            if (!string.IsNullOrWhiteSpace(registryPath))
+                yield return registryPath;
+            yield break;
+        }
 
-        return ReadRegistryValue(@"SOFTWARE\Wow6432Node\Valve\Steam", "InstallPath")
-            ?? ReadRegistryValue(@"SOFTWARE\Valve\Steam", "InstallPath");
+        if (OperatingSystem.IsMacOS())
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(home))
+                yield return GetMacOsSteamInstallPath(home);
+        }
     }
+
+    internal static string GetMacOsSteamInstallPath(string homeDirectory) =>
+        Path.Combine(homeDirectory, "Library", "Application Support", "Steam");
 
     /// <summary>
     /// Reads a string value from the Windows registry (HKLM).

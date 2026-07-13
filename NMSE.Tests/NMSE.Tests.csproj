@@ -99,6 +99,7 @@
     <Compile Include="..\Core\AccountLogic.cs" Link="Core\AccountLogic.cs" />
     <Compile Include="..\Core\Utilities\StringHelper.cs" Link="Core\Utilities\StringHelper.cs" />
     <Compile Include="..\Core\MxmlRewardEditor.cs" Link="Core\MxmlRewardEditor.cs" />
+    <Compile Include="..\Core\ApplicationPaths.cs" Link="Core\ApplicationPaths.cs" />
     <Compile Include="..\Core\RawJsonLogic.cs" Link="Core\RawJsonLogic.cs" />
     <Compile Include="..\Core\Utilities\InventoryImportHelper.cs" Link="Core\Utilities\InventoryImportHelper.cs" />
     <Compile Include="..\Core\Utilities\InventorySlotHelper.cs" Link="Core\Utilities\InventorySlotHelper.cs" />

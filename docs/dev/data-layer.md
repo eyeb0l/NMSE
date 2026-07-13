@@ -122,25 +122,24 @@ files via `LocalisationService`.
 
 ---
 
-### IconManager
+### AvaloniaIconProvider
 
 | | |
 |---|---|
-| File | `Data/IconManager.cs` |
+| File | `UI.Avalonia/Services/AvaloniaIconProvider.cs` |
 | Purpose | Load, cache, and downscale item icon images for inventory grids |
 
-An `IDisposable` instance class initialized with the path to the icons directory. Icons are
-downscaled to a maximum of 128 px on load (the originals are 256x256) using bilinear
-interpolation, saving roughly 75% memory while remaining sharp at the 96 px display size
-used in grids.
+An `IDisposable` instance class initialized with the path to the images directory. Icons are
+decoded into Avalonia bitmaps, downscaled for display, cached, and disposed without holding
+source files open.
 
 `PreloadIcons(database)` loads all database icons in parallel on background threads, capped
-at `Environment.ProcessorCount` to avoid GDI+ contention. `GetIcon(filename)` returns the
+at `Environment.ProcessorCount`. `GetIcon(filename)` returns the
 cached image or loads on demand. `GetIconForItem(itemId, database)` combines database lookup
 with icon retrieval.
 
-**Design choice:** Bilinear (not bicubic) interpolation is used because the quality
-difference is imperceptible at 128 px and bilinear is measurably faster during bulk preload.
+**Design choice:** Bitmap ownership remains entirely inside the provider so panel controls do
+not leak image handles or depend on GDI+.
 
 ---
 
@@ -457,20 +456,19 @@ and jump count estimates.
 | `GetJumpsToCenter(distance, perJump)` | Estimated warp jumps needed |
 | `PortalHexToDec(code)` | Convert hex digits to decimal+1 comma-separated |
 
-On WinForms builds (conditional compilation), also provides glyph image rendering:
-`GetGlyphImage(hexDigit)` returns a cached PNG, and `CreateGlyphPanel` / `UpdateGlyphPanel`
-create or refresh a `FlowLayoutPanel` of portal glyph images.
+Portal glyph presentation is intentionally separate from this pure coordinate math and is
+implemented by the Avalonia `GlyphRenderer` control.
 
 ---
 
 ## Dependency Graph
 
 ```
-GameItemDatabase  <--  IconManager (icon filenames from items)
-                  <--  InventoryGridPanel (item lookup for picker)
+GameItemDatabase  <--  AvaloniaIconProvider (icon filenames from items)
+                  <--  InventoryGrid (item lookup for picker)
                   <--  SettlementLogic (production item filtering)
 
-RecipeDatabase    <--  RecipePanel (recipe display)
+RecipeDatabase    <--  RecipeBrowserPanel (recipe display)
 
 RewardDatabase    <--  AccountLogic (reward unlock management)
 
@@ -479,8 +477,8 @@ JsonNameMapper    <--  JsonParser (global default mapper)
 
 CompanionDatabase <--  CompanionLogic (species name lookup)
 
-TechAdjacencyDatabase <-- InventoryGridPanel (synergy border rendering)
-TechPackDatabase      <-- InventoryGridPanel (hash-based tech lookup)
+TechAdjacencyDatabase <-- InventoryGrid (synergy border rendering)
+TechPackDatabase      <-- InventoryGrid (hash-based tech lookup)
 
 BaseStatLimits    <--  StarshipLogic, FreighterLogic (stat clamping)
 LeveledStatDatabase <-- Frigate/Squadron panels (class progression)

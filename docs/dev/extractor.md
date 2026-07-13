@@ -296,7 +296,7 @@ Uses consistent formatting for readable diffs.
 
 NMS stores item icons as `.dds` (DirectDraw Surface) textures. This class invokes
 ImageMagick to convert them to `.png` files in `Resources/icons/`. The resulting PNGs are
-loaded by `IconManager` at runtime.
+loaded by `AvaloniaIconProvider` at runtime.
 
 ---
 

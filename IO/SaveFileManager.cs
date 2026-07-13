@@ -79,11 +79,11 @@ public class SaveFileManager
     /// <list type="bullet">
     /// <item><description>Windows (Steam): <c>%APPDATA%\HelloGames\NMS\{profile}</c></description></item>
     /// <item><description>Windows (Xbox GP): <c>%LOCALAPPDATA%\Packages\HelloGames*</c></description></item>
-    /// <item><description>macOS: <c>~/Library/Application Support/HelloGames/NMS/{profile}</c></description></item>
+    /// <item><description>macOS: <c>~/Library/Application Support/HelloGames/NMS</c></description></item>
     /// <item><description>Linux (Steam/Proton): <c>~/.local/share/Steam/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS/{profile}</c></description></item>
     /// </list>
     /// </summary>
-    /// <returns>The path to the first discovered save profile directory, or null if not found.</returns>
+    /// <returns>The platform save root, or null if it cannot be found.</returns>
     public static string? FindDefaultSaveDirectory()
     {
         // Windows: Steam default location (%APPDATA%\HelloGames\NMS)
@@ -124,13 +124,9 @@ public class SaveFileManager
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsMacOS())
         {
-            string macPath = Path.Combine(home, "Library", "Application Support", "HelloGames", "NMS");
-            if (Directory.Exists(macPath))
-            {
-                var dirs = Directory.GetDirectories(macPath);
-                if (dirs.Length > 0)
-                    return dirs[0];
-            }
+            string? macSave = FindMacOsSaveDirectory(home);
+            if (macSave is not null)
+                return macSave;
         }
 
         // Linux: Steam/Proton compatibility data
@@ -162,6 +158,36 @@ public class SaveFileManager
     }
 
     /// <summary>
+    /// Resolves the No Man's Sky save root under a macOS home directory. Save profiles
+    /// and the unrelated game settings directory are siblings below this location.
+    /// </summary>
+    internal static string? FindMacOsSaveDirectory(string homeDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(homeDirectory))
+            return null;
+        string root = Path.Combine(
+            homeDirectory, "Library", "Application Support", "HelloGames", "NMS");
+        return Directory.Exists(root) ? root : null;
+    }
+
+    /// <summary>
+    /// Migrates the old macOS default, which could incorrectly select the NMS
+    /// <c>Settings</c> directory, back to the profile-containing NMS root.
+    /// </summary>
+    internal static string NormalizeMacOsSaveDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+            return directory;
+
+        var info = new DirectoryInfo(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        DirectoryInfo? parent = info.Parent;
+        return string.Equals(info.Name, "Settings", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(parent?.Name, "NMS", StringComparison.OrdinalIgnoreCase)
+            ? parent!.FullName
+            : directory;
+    }
+
+    /// <summary>
     /// Resolves the backup root directory. Priority:
     /// 1. User-configured path (<see cref="Config.AppConfig.BackupDirectory"/>)
     /// 2. EXE-relative "Save Backups" folder
@@ -178,7 +204,23 @@ public class SaveFileManager
             return configured;
         }
 
-        // 2. EXE-relative
+        // 2. Platform user-data location. Packaged app bundles are read-only;
+        // macOS and Linux must never attempt to create backups beside the executable.
+        if (!OperatingSystem.IsWindows())
+        {
+            string userRoot = ApplicationPaths.Current.BackupsDirectory;
+            try
+            {
+                Directory.CreateDirectory(userRoot);
+                return userRoot;
+            }
+            catch
+            {
+                // Continue to the temporary fallback below.
+            }
+        }
+
+        // 3. EXE-relative (legacy Windows portable layout)
         string exeDir = AppDomain.CurrentDomain.BaseDirectory;
         string exeRoot = Path.Combine(exeDir, "Save Backups");
         try
@@ -188,7 +230,7 @@ public class SaveFileManager
         }
         catch
         {
-            // 3. TEMP fallback
+            // 4. TEMP fallback
             string tempRoot = Path.Combine(Path.GetTempPath(), "NMSE", "Save Backups");
             Directory.CreateDirectory(tempRoot);
             return tempRoot;
@@ -209,9 +251,13 @@ public class SaveFileManager
         if (!string.IsNullOrEmpty(configured) && Directory.Exists(configured))
             roots.Add(configured);
 
+        string userRoot = ApplicationPaths.Current.BackupsDirectory;
+        if (Directory.Exists(userRoot) && !roots.Contains(userRoot, StringComparer.OrdinalIgnoreCase))
+            roots.Add(userRoot);
+
         // 2. EXE-relative (if exists)
         string exeRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Save Backups");
-        if (Directory.Exists(exeRoot))
+        if (Directory.Exists(exeRoot) && !roots.Contains(exeRoot, StringComparer.OrdinalIgnoreCase))
             roots.Add(exeRoot);
 
         // 3. TEMP fallback (if exists)
@@ -264,7 +310,9 @@ public class SaveFileManager
         using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
         string basePath = Path.GetFullPath(sourceDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        foreach (string filePath in EnumerateHgFilesSafe(sourceDir))
+        Platform platform = DetectPlatform(sourceDir);
+        bool includeAllFiles = platform is Platform.XboxGamePass or Platform.Switch;
+        foreach (string filePath in EnumerateBackupFilesSafe(sourceDir, includeAllFiles))
         {
             string fullFilePath = Path.GetFullPath(filePath);
             if (!fullFilePath.StartsWith(basePath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
@@ -281,7 +329,7 @@ public class SaveFileManager
     /// checks behave differently, or when the source directory contains protected system
     /// folders (e.g. loading a .hg from the desktop).
     /// </summary>
-    private static IEnumerable<string> EnumerateHgFilesSafe(string root)
+    private static IEnumerable<string> EnumerateBackupFilesSafe(string root, bool includeAllFiles)
     {
         var dirs = new Queue<string>();
         dirs.Enqueue(root);
@@ -293,7 +341,7 @@ public class SaveFileManager
             string[] files;
             try
             {
-                files = Directory.GetFiles(dir, "*.hg", SearchOption.TopDirectoryOnly);
+                files = Directory.GetFiles(dir, includeAllFiles ? "*" : "*.hg", SearchOption.TopDirectoryOnly);
             }
             catch
             {
@@ -302,6 +350,13 @@ public class SaveFileManager
 
             foreach (string file in files)
                 yield return file;
+
+            if (!includeAllFiles)
+            {
+                string memoryDat = Path.Combine(dir, "memory.dat");
+                if (File.Exists(memoryDat))
+                    yield return memoryDat;
+            }
 
             string[] subDirs;
             try
@@ -617,6 +672,86 @@ using var outFs = new FileStream(filePath, FileMode.Create, FileAccess.Write, Fi
         RegisterContextTransforms(result);
         return result;
     }
+
+    /// <summary>
+    /// Replaces one JSON slot inside a PS4 <c>memory.dat</c> container while
+    /// preserving every other slot and the container's original format.
+    /// </summary>
+    public static void SavePS4MemoryDatSave(string memoryDatPath, int slotIndex, JsonObject data)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryDatPath);
+        ArgumentNullException.ThrowIfNull(data);
+
+        MemoryDatSlot[] slots = MemoryDatManager.ReadSlots(memoryDatPath);
+        if (slotIndex < 0 || slotIndex >= slots.Length || !slots[slotIndex].Exists)
+            throw new InvalidOperationException($"PS4 memory.dat slot {slotIndex} does not exist.");
+
+        byte[] original = File.ReadAllBytes(memoryDatPath);
+        bool isSaveWizard = slots[slotIndex].IsSaveWizard;
+        var slotData = new Dictionary<int, byte[]>();
+        var slotMeta = slots.ToDictionary(slot => slot.Index, CloneMemoryDatSlot);
+
+        foreach (MemoryDatSlot slot in slots.Where(slot => slot.Exists))
+        {
+            if (slot.Index == slotIndex)
+                continue;
+
+            int offset = checked((int)(slot.IsSaveWizard ? slot.SaveWizardDataOffset : slot.ChunkOffset));
+            int length = checked((int)(slot.IsSaveWizard ? slot.DecompressedSize : slot.CompressedSize));
+            if (offset <= 0 || length <= 0 || offset > original.Length - length)
+                throw new InvalidDataException($"PS4 memory.dat slot {slot.Index} points outside the container.");
+
+            byte[] bytes = new byte[length];
+            Buffer.BlockCopy(original, offset, bytes, 0, length);
+            slotData[slot.Index] = bytes;
+        }
+
+        byte[] jsonBytes = Latin1.GetBytes(data.ToString());
+        byte[] terminatedJson = new byte[jsonBytes.Length + 1];
+        Buffer.BlockCopy(jsonBytes, 0, terminatedJson, 0, jsonBytes.Length);
+        MemoryDatSlot targetMeta = slotMeta[slotIndex];
+        targetMeta.Timestamp = DateTimeOffset.UtcNow;
+        targetMeta.DecompressedSize = checked((uint)terminatedJson.Length);
+
+        if (isSaveWizard)
+        {
+            targetMeta.CompressedSize = checked((uint)terminatedJson.Length);
+            targetMeta.ChunkSize = checked((uint)terminatedJson.Length);
+            slotData[slotIndex] = terminatedJson;
+            MemoryDatManager.WriteMemoryDatSaveWizard(memoryDatPath, slotData, slotMeta);
+            return;
+        }
+
+        byte[] buffer = new byte[Lz4Compressor.MaxCompressedLength(terminatedJson.Length)];
+        int compressedLength = Lz4Compressor.Compress(
+            terminatedJson, 0, terminatedJson.Length, buffer, 0, buffer.Length);
+        if (targetMeta.ChunkSize > 0 && compressedLength > targetMeta.ChunkSize)
+        {
+            throw new IOException(
+                $"The updated PS4 save requires {compressedLength} bytes, but slot {slotIndex} has only {targetMeta.ChunkSize} bytes.");
+        }
+
+        byte[] compressed = new byte[compressedLength];
+        Buffer.BlockCopy(buffer, 0, compressed, 0, compressedLength);
+        targetMeta.CompressedSize = checked((uint)compressedLength);
+        slotData[slotIndex] = compressed;
+        MemoryDatManager.WriteMemoryDat(memoryDatPath, slotData, slotMeta);
+    }
+
+    private static MemoryDatSlot CloneMemoryDatSlot(MemoryDatSlot slot) => new()
+    {
+        Index = slot.Index,
+        Exists = slot.Exists,
+        MetaFormat = slot.MetaFormat,
+        CompressedSize = slot.CompressedSize,
+        ChunkOffset = slot.ChunkOffset,
+        ChunkSize = slot.ChunkSize,
+        MetaIndex = slot.MetaIndex,
+        Timestamp = slot.Timestamp,
+        DecompressedSize = slot.DecompressedSize,
+        IsSaveWizard = slot.IsSaveWizard,
+        SaveWizardDataOffset = slot.SaveWizardDataOffset,
+    };
 
     /// <summary>
     /// Register the context-based path transforms on a loaded save.

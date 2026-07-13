@@ -37,19 +37,18 @@ This guide walks you through every feature of the application so you can confide
 
 ### What You Need
 
-- **Windows 10 or 11** (64-bit) _... or Linux (Wine, Bottles) and macOS (Gcenx Wine Builds, CrossOver)_
+- **Windows 10/11, Linux x64, or macOS 14+** (Apple Silicon or Intel)
 - A *No Man's Sky* save file from any supported platform
 
 ### Installing NMSE
 
 1. Download the latest version from the [**Releases page**][releases]
-2. Extract the `.zip` file to any folder on your computer
-3. Double-click **`NMSE.exe`** to launch the editor
+2. On Windows, extract the ZIP and launch **`NMSE.exe`**. On Linux, extract the
+   `linux-x64` tarball and run **`NMSE`**. On macOS, open the DMG and drag
+   **NMSE.app** to Applications.
 
-> 💡 No installation is required - NMSE is fully portable. You can run it from a USB drive or any folder.
-
-
-While NMSE is a native Windows application, it runs on **Linux** and **macOS** via Wine compatibility layers. Guides are available for [Wine][guide-wine], [Bottles][guide-bottles], [Gcenx Wine Builds][guide-gcenx-wine], and [CrossOver][guide-crossover]. A native cross-platform version [is planned][cross-platform-plan].
+> 💡 Every release is self-contained. A separate .NET runtime, Wine, Whisky, Bottles,
+> or CrossOver is not required.
 
 ### Supported Platforms
 

@@ -2,8 +2,13 @@
 
 ## Project Overview
 
-NMSE (No Man's Save Editor) is an open-source .NET WinForms desktop application for
+NMSE (No Man's Save Editor) is an open-source .NET/Avalonia desktop application for
 viewing and editing No Man's Sky save files, originally designed and developed by [**vectorcmdr**][githubOwner].
+
+Native macOS migration references:
+
+- [Abandoned Avalonia branch audit](macos-port-audit.md)
+- [Native macOS parity matrix](macos-port-parity.md)
 
 It supports saves from every platform the game ships on (Steam, GOG, Xbox Game Pass,
 PlayStation 4, and Nintendo Switch) and handles each platform's unique file layout,
@@ -17,14 +22,14 @@ A companion console tool, NMSE.Extractor, mines the game's PAK archives to produ
 databases and icons that the editor uses at runtime.
 
 The codebase follows a strict separation between *Logic* classes (pure, static, testable
-data manipulation) and *Panel* classes (WinForms UI binding). All game-specific knowledge
+data manipulation) and *Panel* classes (Avalonia UI binding). All game-specific knowledge
 lives in the Core and Data layers so the UI layer stays thin.
 
 ## Solution Structure
 
 | Project | Description |
 |---------|-------------|
-| **NMSE** (`NMSE.csproj`) | Main application (WinForms and Core) -- Core, Data, IO, Models, UI, Config, Resources |
+| **NMSE** (`NMSE.csproj`) | Cross-platform Avalonia application -- Core, Data, IO, Models, `UI.Avalonia`, Config, Resources |
 | **NMSE.Tests** (`NMSE.Tests/`) | Unit tests for the main application |
 | **NMSE.Extractor** (`NMSE.Extractor/`) | Console tool that extracts game data from NMS PAK files |
 | **NMSE.Extractor.Tests** (`NMSE.Extractor.Tests/`) | Unit tests for the extractor |
@@ -35,12 +40,13 @@ The solution file is `NMSE.slnx` (modern XML format).
 
 ### Build System
 
-The project targets .NET 10.0 (Windows) with Native AOT and trimming enabled for release.
+The application targets generic .NET 10.0 and publishes managed, self-contained payloads
+(`PublishAot=false`) for Windows, Linux, and both macOS architectures.
 
 - **Development**: `dotnet build` produces managed IL (fast, supports debugging).
-- **Release**: `dotnet publish -c Release` produces a self-contained, trimmed, Native AOT
-  executable. Users do not need .NET installed. The CI workflow uses this for releases.
-- Tiered PGO is enabled for development builds (`dotnet run`); it has no effect on AOT output.
+- **Release**: `dotnet publish -c Release -r <RID> --self-contained true` produces a
+  platform-native payload. Users do not need .NET installed.
+- Tiered PGO is enabled for managed runtime builds. Native AOT is deferred until after parity.
 
 ## Documentation Index
 
@@ -59,7 +65,7 @@ All classes are `internal static` with no mutable state.
 Databases and helper classes that load, store, and query game reference data.
 
 - CompanionDatabase, CreaturePartDatabase, ElementDatabase, FrigateTraitDatabase
-- GalaxyDatabase, GameItemDatabase, GameItem, IconManager
+- GalaxyDatabase, GameItemDatabase, GameItem, AvaloniaIconProvider
 - InventoryStackDatabase, JsonNameMapper, LeveledStatDatabase, BaseStatLimits
 - ProceduralStubs, RecipeDatabase, RewardDatabase, SettlementPerkDatabase
 - TechAdjacencyDatabase, TechPackDatabase, TitleDatabase, WikiGuideDatabase
@@ -84,15 +90,11 @@ Domain model classes, the custom JSON tree, and value types.
 - Frigate, Companion, Inventory, InventoryType
 - Recipe, DifficultyLevel, SaveFileMetadata
 
-### [UI Layer](ui-panels.md)
+### UI Layer
 
-WinForms panels, controls, and visual infrastructure.
-
-- MainForm (tab orchestrator)
-- Panels: Account, Base, ByteBeat, Companion, Discovery, Exocraft, Exosuit
-  ExportConfig, Fleet, Freighter, Frigate, InventoryGrid, MainStats, Milestone
-  Multitool, RawJson, Recipe, Settlement, Squadron, Starship
-- ItemPickerDialog, FontManager, RedrawHelper, ColorEmojiLabel
+Avalonia panels, controls, and visual infrastructure live under `UI.Avalonia`.
+`MainWindow` coordinates the 15 top-level areas; platform operations cross the narrow
+`IDesktopServices` boundary, and save-backed panels implement `ISaveEditorPanel`.
 
 ### [Localisation](ui-localisation.md)
 
@@ -113,22 +115,12 @@ The data extraction pipeline that converts NMS game archives into editor databas
 - JsonWriter, LocalisationBuilder, MbinConverter, MxmlParser, PakExtractor
 - Parsers, ProductLookup, TeeTextWriter, SteamLocator, ToolManager
 
-### Cross-Platform (Linux & macOS)
+### Cross-platform packaging
 
-NMSE is a Windows WinForms application, but can run on Linux and macOS via Wine
-compatibility layers. A native cross-platform version using Eto.Forms is planned.
-
-**Linux:**
-- [Wine Linux Guide](wine-linux-guide.md) - run NMSE via Wine (launch script, AppImage, or manual)
-- [Bottles Linux Guide](bottles-linux-guide.md) - run NMSE via Bottles (GUI Wine manager)
-
-**macOS:**
-- [Gcenx Wine Builds Guide](gcenx-macos-guide.md) - run NMSE via Gcenx Wine Builds (free, Apple Silicon supported)
-- [CrossOver macOS Guide](crossover-macos-guide.md) - run NMSE via CrossOver (paid, best Apple Silicon)
-
-**Packaging scripts:** `scripts/linux/` (launch script, AppImage builder, Bottles config), `scripts/macos/` (Homebrew Cask formula)
-
-**Work plan:** See [Cross-Platform Work Plan](cross-platform-workplan.md) for the full migration roadmap.
+CI validates native Avalonia builds on Windows and Linux and creates self-contained native
+macOS app bundles for both `osx-arm64` and `osx-x64`. `scripts/macos/` contains bundle,
+signing, notarization, ZIP/DMG, and validation tooling; `scripts/linux/` contains the
+FreeDesktop launcher template and local publishing notes.
 
 ## Key Architectural Decisions
 
@@ -139,12 +131,12 @@ compatibility layers. A native cross-platform version using Eto.Forms is planned
 | 3 | Save pipeline: containers.index / memory.dat -> LZ4 -> JSON | Each platform wraps the same JSON payload differently; the IO layer normalizes everything to a single `JsonObject` |
 | 4 | Name mapper (obfuscated keys) | NMS obfuscates JSON keys to 3-character codes; the mapper translates both ways so the editor can use human-readable names internally |
 | 5 | Context transforms | `PlayerStateData` resolves to either `BaseContext` or `ExpeditionContext` at runtime via registered transforms on the root `JsonObject` |
-| 6 | version.json -> BuildInfo.g.cs | `version.json` is the single source of truth for major/minor/patch; MSBuild reads it and generates `BuildInfo.g.cs` at build time so the version flows into the app title, About dialog, and zip filename |
-| 7 | IconManager + ColorEmojiLabel | Icons are downscaled to 128 px max and cached; `ColorEmojiLabel` renders NMS glyphs via GDI+ |
+| 6 | `version.json` | `version.json` is the single source of truth for application and package versions |
+| 7 | Avalonia bitmap and glyph controls | Icons are downscaled and cached without GDI+; portal glyphs render through an Avalonia control |
 | 8 | InventoryGrid as reusable control | One grid control handles every inventory type (suit, ship, weapon, freighter, vehicle) with owner-type configuration |
 | 9 | Multi-format import/export | `InventoryImportHelper` detects and unwraps NomNom and NMSSaveEditor wrappers so users can share inventories across tools |
 | 10 | Extractor pipeline (MBIN -> MXML -> JSON) | Game data is compiled into MBIN binary; the extractor decompiles to MXML, parses to dictionaries, then categorizes into JSON database files |
-| 11 | Multi-language localisation | Per-language JSON files in `Resources/json/lang/` (16 languages, BCP 47 tags). Items store `_LocStr` keys for runtime localisation lookup. Language menu in MainForm switches display language; all internal logic uses English defaults but has a translation service for custom per-language UI strings in `Resources/ui/lang/` |
+| 11 | Multi-language localisation | Per-language JSON files in `Resources/json/lang/` (16 languages, BCP 47 tags). Items store `_LocStr` keys for runtime localisation lookup. The language menu switches live display language; internal logic retains English defaults while UI strings come from `Resources/ui/lang/` |
 
 
 [githubOwner]: https://github.com/vectorcmdr

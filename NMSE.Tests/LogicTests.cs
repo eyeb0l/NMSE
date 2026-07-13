@@ -6079,6 +6079,30 @@ public class LogicTests
     }
 
     [Fact]
+    public void MxmlRewardEditor_FindMxmlPath_UsesPlatformDirectorySeparators()
+    {
+        string steamRoot = Path.Combine(Path.GetTempPath(), $"NMSE-steam-{Guid.NewGuid():N}");
+        string mxmlPath = Path.Combine(
+            steamRoot, "steamapps", "common", "No Man's Sky", "Binaries", "SETTINGS",
+            "GCUSERSETTINGSDATA.MXML");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(mxmlPath)!);
+            File.WriteAllText(mxmlPath, "<Data />");
+
+            Assert.Equal(mxmlPath, MxmlRewardEditor.FindMxmlPath([steamRoot]));
+            Assert.Equal(
+                Path.Combine("steamapps", "common", "No Man's Sky", "Binaries", "SETTINGS",
+                    "GCUSERSETTINGSDATA.MXML"),
+                MxmlRewardEditor.SteamRelativePath);
+        }
+        finally
+        {
+            try { Directory.Delete(steamRoot, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public void MxmlRewardEditor_ReadUnlockedRewards_ReturnsEmptyForMissingFile()
     {
         var result = MxmlRewardEditor.ReadUnlockedRewards("/nonexistent/path.MXML");

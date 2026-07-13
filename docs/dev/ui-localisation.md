@@ -92,10 +92,10 @@ Keys use dot-delimited hierarchical naming:
 
 ### Integration Points
 
-1. **`MainForm.LoadDatabase()`** – Sets the UI lang directory via `UiStrings.SetDirectory()`
-2. **`MainForm.ApplyStartupLanguage()`** – Calls `UiStrings.Load()` and `ApplyUiLocalisation()`
-3. **`MainForm.OnLanguageSelected()`** – Reloads UI strings on language switch
-4. **`MainForm.ApplyUiLocalisation()`** – Pushes translated strings to:
+1. **`AvaloniaResourceCatalog.InitializeAsync()`** – Sets the UI lang directory via `UiStrings.SetDirectory()`
+2. **`AvaloniaResourceCatalog.ApplyLanguage()`** – Loads UI and database localisation
+3. **`MainWindow.OnLanguageSelected()`** – Reloads strings and persisted language selection
+4. **`SaveEditorCoordinator.ApplyUiLocalisation()`** – Pushes translated strings to every registered panel
    - Main menu items (File, Edit, Tools, Language, Help)
    - Toolbar labels (Directory, Save Slot, File, Browse, Load, Save)
    - Tab page titles (Player, Exosuit, Multi-tools, etc.)

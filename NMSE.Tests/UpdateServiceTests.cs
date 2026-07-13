@@ -176,6 +176,49 @@ public class UpdateServiceTests
             UpdateService.FindAssetDownloadUrl(doc.RootElement));
     }
 
+    [Theory]
+    [InlineData("osx-arm64", "https://example.com/NMSE-2.0.0-osx-arm64.zip")]
+    [InlineData("osx-x64", "https://example.com/NMSE-2.0.0-osx-x64.zip")]
+    [InlineData("win-x64", "https://example.com/NMSE-2.0.0-win-x64.zip")]
+    [InlineData("linux-x64", "https://example.com/NMSE-2.0.0-linux-x64.zip")]
+    public void FindAssetDownloadUrl_SelectsMatchingOsAndArchitecture(
+        string runtimeIdentifier,
+        string expectedUrl)
+    {
+        string json = """
+        {
+            "assets": [
+                { "name": "NMSE-2.0.0-Release.zip", "browser_download_url": "https://example.com/legacy.zip" },
+                { "name": "NMSE-2.0.0-osx-x64.zip", "browser_download_url": "https://example.com/NMSE-2.0.0-osx-x64.zip" },
+                { "name": "NMSE-2.0.0-linux-x64.zip", "browser_download_url": "https://example.com/NMSE-2.0.0-linux-x64.zip" },
+                { "name": "NMSE-2.0.0-osx-arm64.zip", "browser_download_url": "https://example.com/NMSE-2.0.0-osx-arm64.zip" },
+                { "name": "NMSE-2.0.0-win-x64.zip", "browser_download_url": "https://example.com/NMSE-2.0.0-win-x64.zip" }
+            ]
+        }
+        """;
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.Equal(expectedUrl,
+            UpdateService.FindAssetDownloadUrl(doc.RootElement, runtimeIdentifier));
+    }
+
+    [Fact]
+    public void FindAssetDownloadUrl_FallsBackToLegacyUnlabelledZip()
+    {
+        string json = """
+        {
+            "assets": [
+                { "name": "NMSE-2.0.0-osx-x64.zip", "browser_download_url": "https://example.com/osx-x64.zip" },
+                { "name": "NMSE-2.0.0-Release.zip", "browser_download_url": "https://example.com/legacy.zip" }
+            ]
+        }
+        """;
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.Equal("https://example.com/legacy.zip",
+            UpdateService.FindAssetDownloadUrl(doc.RootElement, "win-arm64"));
+    }
+
     // FindReleaseVersion
 
     [Fact]

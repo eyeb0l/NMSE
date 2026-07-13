@@ -1,0 +1,201 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:NMSE.UI.Avalonia.Views"
+        x:Class="NMSE.UI.Avalonia.Views.MainWindow"
+        Title="NMSE — No Man's Save Editor"
+        Width="1280"
+        Height="820"
+        MinWidth="960"
+        MinHeight="640">
+  <NativeMenu.Menu>
+    <NativeMenu>
+      <NativeMenuItem Header="File">
+        <NativeMenu>
+          <NativeMenuItem Header="Open Save Directory…" Gesture="Meta+O" Click="OnOpenDirectory" />
+          <NativeMenuItem Header="Load Save File…" Gesture="Meta+L" Click="OnOpenFile" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Save" Gesture="Meta+S" Click="OnSave" />
+          <NativeMenuItem Header="Save As…" Gesture="Meta+Shift+S" Click="OnSaveAs" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Close" Gesture="Meta+W" Click="OnClose" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Edit">
+        <NativeMenu>
+          <NativeMenuItem Header="Reload" Gesture="Meta+R" Click="OnReload" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Restore Latest Backup (All)…" Click="OnRestoreBackupAll" />
+          <NativeMenuItem Header="Restore Latest Backup (Current Save)…" Click="OnRestoreBackupCurrent" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Tools">
+        <NativeMenu>
+          <NativeMenuItem Header="Export JSON…" Click="OnExportJson" />
+          <NativeMenuItem Header="Import JSON…" Click="OnImportJson" />
+          <NativeMenuItemSeparator />
+          <NativeMenuItem Header="Recharge All Technology" Click="OnRechargeAllTechnology" />
+          <NativeMenuItem Header="Refill All Stacks" Click="OnRefillAllStacks" />
+          <NativeMenuItem Header="Repair All Slots" Click="OnRepairAllSlots" />
+          <NativeMenuItem Header="Repair All Technology" Click="OnRepairAllTechnology" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Theme">
+        <NativeMenu>
+          <NativeMenuItem Header="System" Click="OnSystemTheme" />
+          <NativeMenuItem Header="Light" Click="OnLightTheme" />
+          <NativeMenuItem Header="Dark" Click="OnDarkTheme" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Language">
+        <NativeMenu>
+          <NativeMenuItem Header="de-DE" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="en-GB" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="en-US" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="es-419" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="es-ES" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="fr-FR" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="it-IT" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="ja-JP" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="ko-KR" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="nl-NL" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="pl-PL" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="pt-BR" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="pt-PT" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="ru-RU" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="zh-CN" Click="OnLanguageSelected" />
+          <NativeMenuItem Header="zh-TW" Click="OnLanguageSelected" />
+        </NativeMenu>
+      </NativeMenuItem>
+      <NativeMenuItem Header="Help">
+        <NativeMenu>
+          <NativeMenuItem Header="User Guide" Click="OnUserGuide" />
+          <NativeMenuItem Header="GitHub" Click="OnGitHub" />
+          <NativeMenuItem Header="Sponsor Development" Click="OnSponsor" />
+          <NativeMenuItem Header="Release Notes" Click="OnReleaseNotes" />
+          <NativeMenuItem Header="Check for Updates…" Click="OnCheckForUpdates" />
+        </NativeMenu>
+      </NativeMenuItem>
+    </NativeMenu>
+  </NativeMenu.Menu>
+
+  <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <Menu x:Name="WindowMenu" Grid.Row="0">
+      <MenuItem Header="_File">
+        <MenuItem Header="Open Save _Directory…" Click="OnOpenDirectoryRouted" />
+        <MenuItem Header="_Load Save File…" Click="OnOpenFileRouted" />
+        <Separator />
+        <MenuItem x:Name="SaveMenuItem" Header="_Save" Click="OnSaveRouted" />
+        <MenuItem x:Name="SaveAsMenuItem" Header="Save _As…" Click="OnSaveAsRouted" />
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnCloseRouted" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="_Reload" Click="OnReloadRouted" />
+        <Separator />
+        <MenuItem Header="Restore Latest Backup (_All)…" Click="OnRestoreBackupAllRouted" />
+        <MenuItem Header="Restore Latest Backup (_Current Save)…" Click="OnRestoreBackupCurrentRouted" />
+      </MenuItem>
+      <MenuItem Header="_Tools">
+        <MenuItem Header="_Export JSON…" Click="OnExportJsonRouted" />
+        <MenuItem Header="_Import JSON…" Click="OnImportJsonRouted" />
+        <Separator />
+        <MenuItem Header="Recharge All Technology" Click="OnRechargeAllTechnologyRouted" />
+        <MenuItem Header="Refill All Stacks" Click="OnRefillAllStacksRouted" />
+        <MenuItem Header="Repair All Slots" Click="OnRepairAllSlotsRouted" />
+        <MenuItem Header="Repair All Technology" Click="OnRepairAllTechnologyRouted" />
+      </MenuItem>
+      <MenuItem Header="_Theme">
+        <MenuItem Header="_System" Click="OnSystemThemeRouted" />
+        <MenuItem Header="_Light" Click="OnLightThemeRouted" />
+        <MenuItem Header="_Dark" Click="OnDarkThemeRouted" />
+      </MenuItem>
+      <MenuItem Header="_Language">
+        <MenuItem Header="de-DE" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="en-GB" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="en-US" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="es-419" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="es-ES" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="fr-FR" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="it-IT" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="ja-JP" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="ko-KR" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="nl-NL" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="pl-PL" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="pt-BR" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="pt-PT" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="ru-RU" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="zh-CN" Click="OnLanguageSelectedRouted" />
+        <MenuItem Header="zh-TW" Click="OnLanguageSelectedRouted" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="User _Guide" Click="OnUserGuideRouted" />
+        <MenuItem Header="_GitHub" Click="OnGitHubRouted" />
+        <MenuItem Header="_Sponsor Development" Click="OnSponsorRouted" />
+        <MenuItem Header="_Release Notes" Click="OnReleaseNotesRouted" />
+        <MenuItem Header="Check for _Updates…" Click="OnCheckForUpdatesRouted" />
+        <Separator />
+        <MenuItem Header="_About" Click="OnAboutRouted" />
+      </MenuItem>
+    </Menu>
+
+    <Border Grid.Row="1" Classes="toolbar">
+      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*,Auto,180,Auto" ColumnSpacing="8" RowSpacing="6">
+        <TextBlock VerticalAlignment="Center" Text="Directory:" />
+        <TextBox x:Name="DirectoryPathBox" Grid.Column="1" PlaceholderText="No save directory selected" LostFocus="OnDirectoryPathCommitted" />
+        <Button Grid.Column="2" Content="Browse…" Click="OnOpenDirectoryRouted" />
+        <ComboBox x:Name="RecentDirectoryCombo" Grid.Column="3" PlaceholderText="Recent directories" SelectionChanged="OnRecentDirectoryChanged" />
+        <TextBlock x:Name="DatabaseCountText" Grid.Column="4" VerticalAlignment="Center" />
+
+        <TextBlock Grid.Row="1" VerticalAlignment="Center" Text="Backup:" />
+        <TextBox x:Name="BackupPathBox" Grid.Row="1" Grid.Column="1" PlaceholderText="Default backup directory" LostFocus="OnBackupPathCommitted" />
+        <Button Grid.Row="1" Grid.Column="2" Content="Browse…" Click="OnBrowseBackup" />
+        <ComboBox x:Name="RecentBackupCombo" Grid.Row="1" Grid.Column="3" PlaceholderText="Recent backup directories" SelectionChanged="OnRecentBackupChanged" />
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Classes="toolbar">
+      <Grid ColumnDefinitions="Auto,220,Auto,220,Auto,Auto" ColumnSpacing="8">
+        <TextBlock VerticalAlignment="Center" Text="Save Slot:" />
+        <ComboBox x:Name="SaveSlotCombo" Grid.Column="1" SelectionChanged="OnSaveSlotChanged" />
+        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="File:" />
+        <ComboBox x:Name="SaveFileCombo" Grid.Column="3" />
+        <Button Grid.Column="4" Content="Load" Click="OnLoadSelected" />
+        <Button x:Name="SaveButton" Grid.Column="5" Content="Save" Click="OnSaveRouted" />
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="3">
+      <TabControl x:Name="MainTabs">
+        <TabItem x:Name="PlayerTab" Classes="primary-tab" />
+        <TabItem x:Name="ExosuitTab" Classes="primary-tab" />
+        <TabItem x:Name="MultitoolsTab" Classes="primary-tab" />
+        <TabItem x:Name="StarshipsTab" Classes="primary-tab" />
+        <TabItem x:Name="FleetTab" Classes="primary-tab" />
+        <TabItem x:Name="ExocraftTab" Classes="primary-tab" />
+        <TabItem x:Name="CompanionsTab" Classes="primary-tab" />
+        <TabItem x:Name="BasesTab" Classes="primary-tab" />
+        <TabItem x:Name="CatalogueTab" Classes="primary-tab" />
+        <TabItem x:Name="MilestonesTab" Classes="primary-tab" />
+        <TabItem x:Name="SettlementsTab" Classes="primary-tab" />
+        <TabItem x:Name="ByteBeatsTab" Classes="primary-tab" />
+        <TabItem x:Name="AccountTab" Classes="primary-tab" />
+        <TabItem x:Name="ExportTab" Classes="primary-tab" />
+        <TabItem x:Name="RawJsonTab" Classes="primary-tab" />
+      </TabControl>
+
+      <Border x:Name="LoadingOverlay" Background="#99000000" IsVisible="False">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+          <ProgressBar IsIndeterminate="True" Width="320" />
+          <TextBlock x:Name="LoadingText" HorizontalAlignment="Center" Foreground="White" Text="Loading…" />
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <Border Grid.Row="4" Classes="statusbar">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="StatusText" Text="Ready" />
+        <TextBlock x:Name="LoadedFileText" Grid.Column="1" />
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
