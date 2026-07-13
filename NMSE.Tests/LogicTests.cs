@@ -6103,6 +6103,122 @@ public class LogicTests
     }
 
     [Fact]
+    public void MxmlRewardEditor_FindUserSettingsPath_FindsMacSettingsSiblingOfProfile()
+    {
+        string nmsRoot = Path.Combine(Path.GetTempPath(), $"NMSE-mac-nms-{Guid.NewGuid():N}");
+        string profile = Path.Combine(nmsRoot, "st_123456789");
+        string mxmlPath = Path.Combine(nmsRoot, "SETTINGS", "GcUserSettingsData.mxml");
+        try
+        {
+            Directory.CreateDirectory(profile);
+            Directory.CreateDirectory(Path.GetDirectoryName(mxmlPath)!);
+            File.WriteAllText(mxmlPath, "<Data template=\"GcUserSettingsData\" />");
+
+            Assert.Equal(mxmlPath, MxmlRewardEditor.FindUserSettingsPath(profile));
+            Assert.Equal(mxmlPath, MxmlRewardEditor.FindUserSettingsPath(nmsRoot));
+        }
+        finally
+        {
+            try { Directory.Delete(nmsRoot, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void AccountLogic_LoadAccountData_FallsBackToMacMxmlAccountArrays()
+    {
+        string nmsRoot = Path.Combine(Path.GetTempPath(), $"NMSE-mac-account-{Guid.NewGuid():N}");
+        string profile = Path.Combine(nmsRoot, "st_123456789");
+        string mxmlPath = Path.Combine(nmsRoot, "SETTINGS", "GcUserSettingsData.mxml");
+        try
+        {
+            Directory.CreateDirectory(profile);
+            Directory.CreateDirectory(Path.GetDirectoryName(mxmlPath)!);
+            File.WriteAllText(mxmlPath, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Data template="GcUserSettingsData">
+                  <Property name="MusicVolume" value="80" />
+                  <Property name="UnlockedSeasonRewards">
+                    <Property name="UnlockedSeasonRewards" value="EXPD_BACKPACK01" _index="0" />
+                  </Property>
+                  <Property name="UnlockedTwitchRewards">
+                    <Property name="UnlockedTwitchRewards" value="TWITCH_1" _index="0" />
+                  </Property>
+                  <Property name="UnlockedPlatformRewards">
+                    <Property name="UnlockedPlatformRewards" value="SW_PREORDER" _index="0" />
+                  </Property>
+                  <Property name="SeenWikiTopics">
+                    <Property name="SeenWikiTopics" value="UI_GUIDE_TOPIC_PORTALS" _index="0" />
+                  </Property>
+                  <Property name="UnlockedTitles">
+                    <Property name="UnlockedTitles" value="T_EXP1" _index="0" />
+                  </Property>
+                </Data>
+                """);
+
+            AccountLogic.AccountData loaded = AccountLogic.LoadAccountData(profile);
+
+            Assert.True(loaded.IsMxmlAccountStore);
+            Assert.Equal(mxmlPath, loaded.AccountFilePath);
+            Assert.Contains("^EXPD_BACKPACK01", loaded.SeasonUnlocked);
+            Assert.Contains("^TWITCH_1", loaded.TwitchUnlocked);
+            Assert.Contains("^SW_PREORDER", loaded.PlatformUnlocked);
+            JsonObject settings = loaded.AccountObject!.GetObject("UserSettingsData")!;
+            Assert.Equal("UI_GUIDE_TOPIC_PORTALS", settings.GetArray("SeenWikiTopics")!.GetString(0));
+            Assert.Equal("^T_EXP1", settings.GetArray("UnlockedTitles")!.GetString(0));
+        }
+        finally
+        {
+            try { Directory.Delete(nmsRoot, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void MxmlRewardEditor_WriteAccountObject_RoundTripsArraysAndPreservesSettings()
+    {
+        string mxmlPath = Path.Combine(Path.GetTempPath(), $"NMSE-mac-roundtrip-{Guid.NewGuid():N}.mxml");
+        try
+        {
+            File.WriteAllText(mxmlPath, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Data template="GcUserSettingsData">
+                  <Property name="MusicVolume" value="80" />
+                  <Property name="UnlockedSeasonRewards">
+                    <Property name="UnlockedSeasonRewards" value="OLD_REWARD" _index="7" />
+                  </Property>
+                  <Property name="UnlockedTitles" />
+                </Data>
+                """);
+            JsonObject account = MxmlRewardEditor.LoadAccountObject(mxmlPath);
+            JsonObject settings = account.GetObject("UserSettingsData")!;
+            settings.GetArray("UnlockedSeasonRewards")!.Set(0, "^EXPD_BACKPACK01");
+            settings.GetArray("UnlockedTitles")!.Add("^T_EXP1");
+
+            Assert.True(MxmlRewardEditor.WriteAccountObject(
+                mxmlPath,
+                account,
+                ["UnlockedSeasonRewards", "UnlockedTitles"]));
+
+            Assert.Equal(
+                ["^EXPD_BACKPACK01"],
+                MxmlRewardEditor.ReadPropertyValues(mxmlPath, "UnlockedSeasonRewards"));
+            Assert.Equal(
+                ["^T_EXP1"],
+                MxmlRewardEditor.ReadPropertyValues(mxmlPath, "UnlockedTitles"));
+            var document = System.Xml.Linq.XDocument.Load(mxmlPath);
+            Assert.Equal("80", document.Root!.Elements("Property")
+                .Single(element => element.Attribute("name")?.Value == "MusicVolume")
+                .Attribute("value")?.Value);
+            Assert.Equal("0", document.Root.Elements("Property")
+                .Single(element => element.Attribute("name")?.Value == "UnlockedSeasonRewards")
+                .Elements("Property").Single().Attribute("_index")?.Value);
+        }
+        finally
+        {
+            try { File.Delete(mxmlPath); } catch { }
+        }
+    }
+
+    [Fact]
     public void MxmlRewardEditor_ReadUnlockedRewards_ReturnsEmptyForMissingFile()
     {
         var result = MxmlRewardEditor.ReadUnlockedRewards("/nonexistent/path.MXML");

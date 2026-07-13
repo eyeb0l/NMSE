@@ -649,7 +649,11 @@ public sealed partial class MainWindow : Window
             JsonObject? accountData = _rawJsonPanel?.GetEditedAccountData()
                 ?? _accountRewardsPanel?.AccountData;
             if (accountData is not null)
+            {
                 _playerPanel?.SaveAccountData(accountData);
+                if (_accountRewardsPanel?.CommitAccountSource(accountData) == false)
+                    throw new IOException("Unable to validate and save GcUserSettingsData.mxml.");
+            }
             await Task.Run(() => session.Save(_currentSaveData, accountData));
             _currentSession = session;
             _currentFilePath = session.SourcePath;

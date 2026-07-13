@@ -48,6 +48,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
     private JsonObject? _currentSaveData;
     private string? _accountFilePath;
     private string? _mxmlFilePath;
+    private bool _mxmlIsAccountStore;
     private SaveFileManager.Platform _platform = SaveFileManager.Platform.Unknown;
     private HashSet<string> _originalSeasonRedeemed = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _originalTwitchRedeemed = new(StringComparer.OrdinalIgnoreCase);
@@ -135,6 +136,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         if (UsesMxml)
             return;
         _mxmlFilePath = null;
+        _mxmlIsAccountStore = false;
         _mxmlPathBox.Text = string.Empty;
         _mxmlStatus.Text = string.Empty;
     }
@@ -182,6 +184,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         {
             _accountData = null;
             _accountFilePath = accountPath;
+            _mxmlIsAccountStore = false;
             ClearRows();
             _statusLabel.Text = UiStrings.Get("account.status_not_loaded");
             return;
@@ -195,6 +198,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         {
             AccountObject = accountData,
             AccountFilePath = accountPath,
+            IsMxmlAccountStore = string.Equals(Path.GetExtension(accountPath), ".mxml", StringComparison.OrdinalIgnoreCase),
             SeasonUnlocked = season,
             TwitchUnlocked = twitch,
             PlatformUnlocked = platform,
@@ -249,12 +253,26 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             _resources.Items,
             _productIds);
 
-        if (UsesMxml && !SyncMxmlSafely(platform.Select(row => (row.Id, row.Unlocked)).ToList()))
-        {
-            _mxmlStatus.Text = UiStrings.Get("account.file_not_found");
-            _mxmlStatus.Foreground = Brushes.IndianRed;
-        }
         DataModified?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Persists the account model after every panel, including Player guides and
+    /// titles, has committed its changes. For macOS this writes the supported arrays
+    /// back to GcUserSettingsData.mxml; other PC platforms retain platform-only MXML sync.
+    /// </summary>
+    public bool CommitAccountSource(JsonObject accountData)
+    {
+        if (!UsesMxml || string.IsNullOrWhiteSpace(_mxmlFilePath))
+            return true;
+
+        IEnumerable<string> properties = _mxmlIsAccountStore
+            ? MxmlRewardEditor.AccountArrayPropertyNames
+            : ["UnlockedPlatformRewards"];
+        bool saved = SyncMxmlSafely(accountData, properties);
+        _mxmlStatus.Text = UiStrings.Get(saved ? "account.file_found" : "account.file_not_found");
+        _mxmlStatus.Foreground = saved ? Brushes.Green : Brushes.IndianRed;
+        return saved;
     }
 
     public void ApplyUiLocalisation()
@@ -266,7 +284,9 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         ApplyTabLocalisation(_seasonTab, "account.tab_season");
         ApplyTabLocalisation(_twitchTab, "account.tab_twitch");
         ApplyTabLocalisation(_platformTab, "account.tab_platform");
-        _mxmlInfo.Text = UiStrings.Get("account.platform_mxml_info");
+        _mxmlInfo.Text = UiStrings.Get(_mxmlIsAccountStore
+            ? "account.macos_mxml_info"
+            : "account.platform_mxml_info");
         _mxmlPathBox.PlaceholderText = UiStrings.Get("account.platform_mxml_placeholder");
         _mxmlBrowse.Content = UiStrings.Get("common.browse");
     }
@@ -326,6 +346,10 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         {
             _accountData = data.AccountObject;
             _accountFilePath = data.AccountFilePath;
+            _mxmlIsAccountStore = data.IsMxmlAccountStore;
+            _mxmlInfo.Text = UiStrings.Get(_mxmlIsAccountStore
+                ? "account.macos_mxml_info"
+                : "account.platform_mxml_info");
             if (data.ErrorMessage is not null)
             {
                 ClearRows();
@@ -333,14 +357,18 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
                 return;
             }
 
-            if (useMxml && string.IsNullOrWhiteSpace(_mxmlFilePath))
+            if (useMxml && data.IsMxmlAccountStore && !string.IsNullOrWhiteSpace(data.AccountFilePath))
+            {
+                SetMxmlPath(data.AccountFilePath);
+            }
+            else if (useMxml && string.IsNullOrWhiteSpace(_mxmlFilePath))
             {
                 string? detected = MxmlRewardEditor.AutoDetectMxmlPath();
                 if (detected is not null)
                     SetMxmlPath(detected);
             }
             HashSet<string> platformUnlocked = data.PlatformUnlocked;
-            if (useMxml && !string.IsNullOrWhiteSpace(_mxmlFilePath))
+            if (useMxml && !_mxmlIsAccountStore && !string.IsNullOrWhiteSpace(_mxmlFilePath))
             {
                 HashSet<string> mxml = MxmlRewardEditor.ReadUnlockedRewards(_mxmlFilePath);
                 platformUnlocked = new HashSet<string>(
@@ -452,7 +480,10 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             return;
         SetMxmlPath(path);
         if (_accountData is null)
+        {
+            ApplyAccountData(AccountLogic.LoadMxmlAccountData(path), useMxml: true);
             return;
+        }
         JsonObject settings = _accountData.GetObject("UserSettingsData") ?? _accountData;
         HashSet<string> unlocked = AccountLogic.GetUnlockedSet(settings.GetArray("UnlockedPlatformRewards"));
         unlocked.UnionWith(MxmlRewardEditor.ReadUnlockedRewards(path));
@@ -468,7 +499,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         _mxmlStatus.Foreground = exists ? Brushes.Green : Brushes.IndianRed;
     }
 
-    private bool SyncMxmlSafely(List<(string Id, bool Unlocked)> rewards)
+    private bool SyncMxmlSafely(JsonObject accountData, IEnumerable<string> propertyNames)
     {
         if (string.IsNullOrWhiteSpace(_mxmlFilePath))
             return true;
@@ -477,16 +508,21 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
         string temporary = _mxmlFilePath + ".nmse.tmp";
         string backup = _mxmlFilePath + ".nmse.bak";
+        string[] properties = propertyNames.Distinct(StringComparer.Ordinal).ToArray();
         try
         {
             File.Copy(_mxmlFilePath, temporary, overwrite: true);
-            if (!MxmlRewardEditor.WriteUnlockedRewards(temporary, rewards))
+            if (!MxmlRewardEditor.WriteAccountObject(temporary, accountData, properties))
                 return false;
-            var desired = rewards.Where(row => row.Unlocked)
-                .Select(row => row.Id.StartsWith('^') ? row.Id : "^" + row.Id)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!desired.SetEquals(MxmlRewardEditor.ReadUnlockedRewards(temporary)))
-                return false;
+
+            JsonObject settings = accountData.GetObject("UserSettingsData") ?? accountData;
+            foreach (string property in properties)
+            {
+                HashSet<string> desired = AccountLogic.GetUnlockedSet(settings.GetArray(property));
+                HashSet<string> written = MxmlRewardEditor.ReadPropertyValues(temporary, property);
+                if (!desired.SetEquals(written))
+                    return false;
+            }
 
             File.Copy(_mxmlFilePath, backup, overwrite: true);
             File.Move(temporary, _mxmlFilePath, overwrite: true);

@@ -11,6 +11,7 @@
   </NativeMenu.Menu>
   <Application.Styles>
     <FluentTheme />
+    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
     <StyleInclude Source="avares://NMSE/UI.Avalonia/Styles/AppStyles.axaml" />
   </Application.Styles>
 </Application>

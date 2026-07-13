@@ -808,7 +808,12 @@ The **Account** tab shows seasonal reward (expedition), Twitch drops and platfor
 
 Each tab has the ability to unlock / lock all, unlock individually and filter the lists.
 
-Platform rewards may require the user settings MXML file to also be edited directly depending on your platform. It will auto find the file on supported platforms, if not browse to `GCUSERSETTINGSDATA.MXML` in the NMS `Binaries\SETTINGS\` directory
+On macOS, NMSE loads account rewards, guide state and titles from
+`~/Library/Application Support/HelloGames/NMS/SETTINGS/GcUserSettingsData.mxml`
+because the native game does not create `accountdata.hg`. NMSE creates a `.nmse.bak`
+backup and validates edited arrays before replacing this file. On other PC platforms,
+platform rewards may additionally use `GCUSERSETTINGSDATA.MXML` in the NMS
+`Binaries\SETTINGS\` directory; NMSE auto-detects it where supported or allows manual selection.
 
 > 💡 **Tips:** <br>
 > Due to how the game works, Twitch drops and platform rewards, you need to set your game to offline before starting the game to unlock the rewards. <br>

@@ -132,6 +132,16 @@ public class ApplicationPathsTests
             Path.Combine(steam, MxmlRewardEditor.SteamRelativePath));
     }
 
+    [Fact]
+    public void MacOSAccountMxmlDiscovery_UsesHelloGamesSettingsTree()
+    {
+        string home = Path.Combine(Path.GetTempPath(), "nmse-home");
+
+        Assert.Equal(
+            Path.Combine(home, "Library", "Application Support", "HelloGames", "NMS", "SETTINGS", "GcUserSettingsData.mxml"),
+            MxmlRewardEditor.GetMacOsUserSettingsPath(home));
+    }
+
     private static string CreateTemporaryDirectory()
     {
         string path = Path.Combine(Path.GetTempPath(), $"NMSE-paths-{Guid.NewGuid():N}");

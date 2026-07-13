@@ -91,7 +91,8 @@ internal static class AccountLogic
     }
 
     /// <summary>
-    /// Loads account data from the accountdata.hg file in the specified save directory.
+    /// Loads account data from accountdata.hg, PlayStation savedata00.hg, or the
+    /// macOS GcUserSettingsData.mxml account store associated with the save profile.
     /// </summary>
     /// <param name="saveDirectory">The path to the save directory containing accountdata.hg.</param>
     /// <returns>An <see cref="AccountData"/> with loaded reward sets, or an error message if loading failed.</returns>
@@ -105,7 +106,12 @@ internal static class AccountLogic
             if (File.Exists(ps4AccountPath))
                 accountPath = ps4AccountPath;
             else
-                return new AccountData { ErrorMessage = UiStrings.Get("account.not_found") };
+            {
+                string? mxmlPath = MxmlRewardEditor.FindUserSettingsPath(saveDirectory);
+                return mxmlPath is null
+                    ? new AccountData { ErrorMessage = UiStrings.Get("account.not_found") }
+                    : LoadMxmlAccountData(mxmlPath);
+            }
         }
 
         try
@@ -132,6 +138,38 @@ internal static class AccountLogic
         catch (Exception ex)
         {
             return new AccountData { ErrorMessage = UiStrings.Format("account.load_error", accountPath, ex.Message) };
+        }
+    }
+
+    /// <summary>Loads the macOS MXML account arrays into the normal editor model.</summary>
+    internal static AccountData LoadMxmlAccountData(string mxmlPath)
+    {
+        try
+        {
+            JsonObject accountObj = MxmlRewardEditor.LoadAccountObject(mxmlPath);
+            JsonObject userSettings = accountObj.GetObject("UserSettingsData")!;
+            HashSet<string> seasonUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedSeasonRewards"));
+            HashSet<string> twitchUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedTwitchRewards"));
+            HashSet<string> platformUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedPlatformRewards"));
+            int total = seasonUnlocked.Count + twitchUnlocked.Count + platformUnlocked.Count;
+
+            return new AccountData
+            {
+                AccountObject = accountObj,
+                AccountFilePath = mxmlPath,
+                IsMxmlAccountStore = true,
+                SeasonUnlocked = seasonUnlocked,
+                TwitchUnlocked = twitchUnlocked,
+                PlatformUnlocked = platformUnlocked,
+                StatusMessage = UiStrings.Format("account.status_loaded", total),
+            };
+        }
+        catch (Exception ex)
+        {
+            return new AccountData
+            {
+                ErrorMessage = UiStrings.Format("account.load_error", mxmlPath, ex.Message),
+            };
         }
     }
 
@@ -935,6 +973,8 @@ internal static class AccountLogic
         public JsonObject? AccountObject { get; set; }
         /// <summary>The file path to the account data file.</summary>
         public string? AccountFilePath { get; set; }
+        /// <summary>Whether the JSON object is an adapter over macOS user-settings MXML.</summary>
+        public bool IsMxmlAccountStore { get; set; }
         /// <summary>Set of unlocked season reward IDs.</summary>
         public HashSet<string> SeasonUnlocked { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Set of unlocked Twitch reward IDs.</summary>

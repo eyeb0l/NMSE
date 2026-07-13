@@ -30,6 +30,7 @@
   "account.lock_all": "Lock All",
   "account.not_found": "Account data: accountdata.hg not found in save directory.",
   "account.platform_mxml_info": "Platform Rewards require editing the file 'GCUSERSETTINGSDATA.MXML' in the NMS install directory.",
+  "account.macos_mxml_info": "On macOS, account rewards, guide state and titles are stored in GcUserSettingsData.mxml.",
   "account.platform_mxml_placeholder": "(No MXML file selected)",
   "account.redeem_all": "Redeem All",
   "account.remove_all": "Remove All",

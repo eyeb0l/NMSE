@@ -1,37 +1,62 @@
 using System.Globalization;
 using System.Xml.Linq;
+using NMSE.Models;
 
 namespace NMSE.Core;
 
 /// <summary>
-/// Reads and writes UnlockedPlatformRewards entries in GCUSERSETTINGSDATA.MXML.
-/// The MXML file uses a container Property element with child Property elements:
-/// <code>
-///   &lt;Property name="UnlockedPlatformRewards"&gt;
-///     &lt;Property name="UnlockedPlatformRewards" value="SW_PREORDER" _index="0" /&gt;
-///     &lt;Property name="UnlockedPlatformRewards" value="SW_PREORDER2" _index="1" /&gt;
-///   &lt;/Property&gt;
-/// </code>
+/// Adapts the array-like account fields in <c>GcUserSettingsData.mxml</c> to the
+/// JSON account model used by the editor. macOS stores these fields in the user
+/// settings MXML instead of a profile-local <c>accountdata.hg</c> file.
 /// </summary>
 internal static class MxmlRewardEditor
 {
     private const string PropertyElementName = "Property";
-    private const string RewardPropertyName = "UnlockedPlatformRewards";
-    private const string MxmlFileName = "GCUSERSETTINGSDATA.MXML";
+    private const string PlatformRewardPropertyName = "UnlockedPlatformRewards";
+    private const string SteamMxmlFileName = "GCUSERSETTINGSDATA.MXML";
+    private const string MacOsMxmlFileName = "GcUserSettingsData.mxml";
 
-    /// <summary>
-    /// The expected relative path from the Steam install directory to the MXML settings file.
-    /// </summary>
+    internal static readonly string[] AccountArrayPropertyNames =
+    [
+        "SeenProducts",
+        "SeenTechnologies",
+        "SeenSubstances",
+        "UnlockedSpecials",
+        "UnlockedSeasonRewards",
+        "UnlockedTwitchRewards",
+        "UnlockedPlatformRewards",
+        "SeenWikiTopics",
+        "UnlockedWikiTopics",
+        "UnlockedTitles",
+    ];
+
+    private static readonly HashSet<string> CaretPrefixedJsonProperties = new(StringComparer.Ordinal)
+    {
+        "SeenProducts",
+        "SeenTechnologies",
+        "SeenSubstances",
+        "UnlockedSpecials",
+        "UnlockedSeasonRewards",
+        "UnlockedTwitchRewards",
+        "UnlockedPlatformRewards",
+        "UnlockedTitles",
+    };
+
+    /// <summary>The expected path below a Windows/macOS Steam installation.</summary>
     internal static readonly string SteamRelativePath = Path.Combine(
-        "steamapps", "common", "No Man's Sky", "Binaries", "SETTINGS", MxmlFileName);
+        "steamapps", "common", "No Man's Sky", "Binaries", "SETTINGS", SteamMxmlFileName);
 
-    /// <summary>
-    /// Attempts to auto-detect the full path to GCUSERSETTINGSDATA.MXML from
-    /// the platform's Steam installation.
-    /// </summary>
-    /// <returns>The full path if found and the file exists, otherwise null.</returns>
+    /// <summary>Attempts to locate the active user-settings MXML for this platform.</summary>
     internal static string? AutoDetectMxmlPath()
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string? macPath = ResolveExistingMxml(Path.GetDirectoryName(GetMacOsUserSettingsPath(home))!);
+            if (macPath is not null)
+                return macPath;
+        }
+
         return FindMxmlPath(GetSteamInstallPaths());
     }
 
@@ -52,9 +77,255 @@ internal static class MxmlRewardEditor
     }
 
     /// <summary>
-    /// Gets candidate Steam roots from the Windows registry or the standard
-    /// macOS user installation directory.
+    /// Finds the user-settings MXML from an NMS root, save-profile directory, SETTINGS
+    /// directory, or a path nested immediately below one of those locations.
     /// </summary>
+    internal static string? FindUserSettingsPath(string saveDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(saveDirectory))
+            return null;
+
+        try
+        {
+            string fullPath = Path.GetFullPath(saveDirectory);
+            if (File.Exists(fullPath) &&
+                string.Equals(Path.GetExtension(fullPath), ".mxml", StringComparison.OrdinalIgnoreCase))
+            {
+                return fullPath;
+            }
+
+            DirectoryInfo? current = new(fullPath);
+            for (int depth = 0; current is not null && depth < 5; depth++, current = current.Parent)
+            {
+                string settingsDirectory = string.Equals(current.Name, "SETTINGS", StringComparison.OrdinalIgnoreCase)
+                    ? current.FullName
+                    : Path.Combine(current.FullName, "SETTINGS");
+                string? candidate = ResolveExistingMxml(settingsDirectory);
+                if (candidate is not null)
+                    return candidate;
+            }
+        }
+        catch
+        {
+            // Invalid/inaccessible paths are treated as not found.
+        }
+
+        return null;
+    }
+
+    internal static string GetMacOsUserSettingsPath(string homeDirectory) => Path.Combine(
+        homeDirectory,
+        "Library", "Application Support", "HelloGames", "NMS", "SETTINGS", MacOsMxmlFileName);
+
+    internal static string GetMacOsSteamInstallPath(string homeDirectory) =>
+        Path.Combine(homeDirectory, "Library", "Application Support", "Steam");
+
+    /// <summary>Loads the supported MXML arrays into the existing JSON account shape.</summary>
+    internal static JsonObject LoadAccountObject(string mxmlPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mxmlPath);
+        var document = XDocument.Load(mxmlPath);
+        XElement root = document.Root ?? throw new InvalidDataException("The MXML document has no root element.");
+        var settings = new JsonObject();
+
+        foreach (string propertyName in AccountArrayPropertyNames)
+        {
+            var values = new JsonArray();
+            foreach (string value in ReadPropertyValues(root, propertyName))
+                values.Add(NormalizeForJson(propertyName, value));
+            settings.Set(propertyName, values);
+        }
+
+        var account = new JsonObject();
+        account.Set("UserSettingsData", settings);
+        return account;
+    }
+
+    /// <summary>
+    /// Writes selected JSON account arrays back to MXML in one parse/save pass,
+    /// preserving all unrelated settings and property containers.
+    /// </summary>
+    internal static bool WriteAccountObject(
+        string mxmlPath,
+        JsonObject accountObject,
+        IEnumerable<string> propertyNames)
+    {
+        if (string.IsNullOrWhiteSpace(mxmlPath) || !File.Exists(mxmlPath))
+            return false;
+
+        try
+        {
+            var document = XDocument.Load(mxmlPath);
+            XElement root = document.Root ?? throw new InvalidDataException("The MXML document has no root element.");
+            JsonObject settings = accountObject.GetObject("UserSettingsData") ?? accountObject;
+
+            foreach (string propertyName in propertyNames.Distinct(StringComparer.Ordinal))
+            {
+                JsonArray? array = settings.GetArray(propertyName);
+                var values = new List<string>();
+                if (array is not null)
+                {
+                    for (int index = 0; index < array.Length; index++)
+                    {
+                        string? value = array.GetString(index);
+                        if (!string.IsNullOrWhiteSpace(value))
+                            values.Add(NormalizeForMxml(value));
+                    }
+                }
+                UpdatePropertyContainer(root, propertyName, values);
+            }
+
+            document.Save(mxmlPath);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Reads a named MXML array and returns values in JSON/account ID form.</summary>
+    internal static HashSet<string> ReadPropertyValues(string mxmlPath, string propertyName)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(mxmlPath) || !File.Exists(mxmlPath))
+            return result;
+
+        try
+        {
+            XElement? root = XDocument.Load(mxmlPath).Root;
+            if (root is null)
+                return result;
+            foreach (string value in ReadPropertyValues(root, propertyName))
+                result.Add(NormalizeForJson(propertyName, value));
+        }
+        catch
+        {
+            // Graceful read failure preserves the established API contract.
+        }
+        return result;
+    }
+
+    /// <summary>Compatibility wrapper for the platform-reward UI and existing tests.</summary>
+    internal static HashSet<string> ReadUnlockedRewards(string mxmlPath) =>
+        ReadPropertyValues(mxmlPath, PlatformRewardPropertyName);
+
+    /// <summary>Compatibility wrapper that writes platform rewards only.</summary>
+    internal static bool WriteUnlockedRewards(string mxmlPath, List<(string Id, bool Unlocked)> rewards)
+    {
+        var account = new JsonObject();
+        var settings = new JsonObject();
+        var values = new JsonArray();
+        foreach ((string id, bool unlocked) in rewards)
+        {
+            if (unlocked && !string.IsNullOrWhiteSpace(id))
+                values.Add(id);
+        }
+        settings.Set(PlatformRewardPropertyName, values);
+        account.Set("UserSettingsData", settings);
+        return WriteAccountObject(mxmlPath, account, [PlatformRewardPropertyName]);
+    }
+
+    internal static bool SyncPlatformRewards(string? mxmlPath, List<(string Id, bool Unlocked)> rewards) =>
+        string.IsNullOrWhiteSpace(mxmlPath) || WriteUnlockedRewards(mxmlPath, rewards);
+
+    private static IEnumerable<string> ReadPropertyValues(XElement root, string propertyName) =>
+        root.Descendants(PropertyElementName)
+            .Where(element => string.Equals(
+                element.Attribute("name")?.Value,
+                propertyName,
+                StringComparison.Ordinal))
+            .Select(element => element.Attribute("value")?.Value)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!);
+
+    private static void UpdatePropertyContainer(
+        XElement root,
+        string propertyName,
+        IEnumerable<string> requestedValues)
+    {
+        XElement container = FindOrCreateContainer(root, propertyName);
+        foreach (XElement element in container.Elements(PropertyElementName)
+                     .Where(element => string.Equals(
+                         element.Attribute("name")?.Value,
+                         propertyName,
+                         StringComparison.Ordinal))
+                     .ToList())
+        {
+            element.Remove();
+        }
+
+        string[] values = requestedValues
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(NormalizeForMxml)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        for (int index = 0; index < values.Length; index++)
+        {
+            container.Add(new XElement(PropertyElementName,
+                new XAttribute("name", propertyName),
+                new XAttribute("value", values[index]),
+                new XAttribute("_index", index.ToString(CultureInfo.InvariantCulture))));
+        }
+    }
+
+    private static XElement FindOrCreateContainer(XElement root, string propertyName)
+    {
+        XElement? container = root.Elements(PropertyElementName)
+            .FirstOrDefault(element => string.Equals(
+                    element.Attribute("name")?.Value,
+                    propertyName,
+                    StringComparison.Ordinal) &&
+                element.Attribute("value") is null);
+        if (container is not null)
+            return container;
+
+        foreach (XElement flatEntry in root.Elements(PropertyElementName)
+                     .Where(element => string.Equals(
+                             element.Attribute("name")?.Value,
+                             propertyName,
+                             StringComparison.Ordinal) &&
+                         element.Attribute("value") is not null)
+                     .ToList())
+        {
+            flatEntry.Remove();
+        }
+
+        container = new XElement(PropertyElementName, new XAttribute("name", propertyName));
+        root.Add(container);
+        return container;
+    }
+
+    private static string NormalizeForJson(string propertyName, string value) =>
+        CaretPrefixedJsonProperties.Contains(propertyName) && !value.StartsWith('^')
+            ? "^" + value
+            : value;
+
+    private static string NormalizeForMxml(string value) => value.StartsWith('^') ? value[1..] : value;
+
+    private static string? ResolveExistingMxml(string settingsDirectory)
+    {
+        if (!Directory.Exists(settingsDirectory))
+            return null;
+
+        string expected = Path.Combine(settingsDirectory, MacOsMxmlFileName);
+        if (File.Exists(expected))
+            return expected;
+
+        try
+        {
+            return Directory.EnumerateFiles(settingsDirectory)
+                .FirstOrDefault(path => string.Equals(
+                    Path.GetFileName(path),
+                    MacOsMxmlFileName,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static IEnumerable<string> GetSteamInstallPaths()
     {
         if (OperatingSystem.IsWindows())
@@ -74,12 +345,6 @@ internal static class MxmlRewardEditor
         }
     }
 
-    internal static string GetMacOsSteamInstallPath(string homeDirectory) =>
-        Path.Combine(homeDirectory, "Library", "Application Support", "Steam");
-
-    /// <summary>
-    /// Reads a string value from the Windows registry (HKLM).
-    /// </summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static string? ReadRegistryValue(string subKey, string valueName)
     {
@@ -92,156 +357,5 @@ internal static class MxmlRewardEditor
         {
             return null;
         }
-    }
-
-    /// <summary>
-    /// Reads the currently unlocked platform reward IDs from the MXML file.
-    /// Supports the correct nested format (child entries inside a container element)
-    /// as well as legacy flat format for backwards compatibility.
-    /// </summary>
-    /// <param name="mxmlPath">Full path to GCUSERSETTINGSDATA.MXML.</param>
-    /// <returns>A set of reward value strings (with ^ prefix to match RewardDatabase IDs), or empty set on error.</returns>
-    internal static HashSet<string> ReadUnlockedRewards(string mxmlPath)
-    {
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrEmpty(mxmlPath) || !File.Exists(mxmlPath))
-            return result;
-
-        try
-        {
-            var doc = XDocument.Load(mxmlPath);
-            if (doc.Root == null) return result;
-
-            foreach (var prop in doc.Root.Descendants(PropertyElementName))
-            {
-                var nameAttr = prop.Attribute("name");
-                var valueAttr = prop.Attribute("value");
-                if (nameAttr?.Value == RewardPropertyName && valueAttr != null
-                    && !string.IsNullOrEmpty(valueAttr.Value))
-                {
-                    // Store as ^VALUE to match the reward database ID format
-                    string val = valueAttr.Value;
-                    if (!val.StartsWith('^'))
-                        val = "^" + val;
-                    result.Add(val);
-                }
-            }
-        }
-        catch
-        {
-            // Graceful failure - return what we have
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Writes unlocked platform rewards to the MXML file.
-    /// Uses the correct nested format with a container Property element wrapping child entries:
-    /// <code>
-    ///   &lt;Property name="UnlockedPlatformRewards"&gt;
-    ///     &lt;Property name="UnlockedPlatformRewards" value="SW_PREORDER" _index="0" /&gt;
-    ///   &lt;/Property&gt;
-    /// </code>
-    /// </summary>
-    /// <param name="mxmlPath">Full path to GCUSERSETTINGSDATA.MXML.</param>
-    /// <param name="rewards">The reward IDs (with ^ prefix) and their unlock state.</param>
-    /// <returns>True if the file was written successfully, false otherwise.</returns>
-    internal static bool WriteUnlockedRewards(string mxmlPath, List<(string Id, bool Unlocked)> rewards)
-    {
-        if (string.IsNullOrEmpty(mxmlPath) || !File.Exists(mxmlPath))
-            return false;
-
-        try
-        {
-            var doc = XDocument.Load(mxmlPath);
-            if (doc.Root == null) return false;
-
-            // Find or create the container element for UnlockedPlatformRewards.
-            var container = FindOrCreateRewardContainer(doc.Root);
-
-            // Remove all existing child entries inside the container
-            var existing = container.Elements(PropertyElementName)
-                .Where(e => e.Attribute("name")?.Value == RewardPropertyName)
-                .ToList();
-            foreach (var el in existing)
-                el.Remove();
-
-            // Build set of IDs to unlock (strip ^ prefix for MXML value)
-            var toUnlock = new List<string>();
-            foreach (var (id, unlocked) in rewards)
-            {
-                if (unlocked && !string.IsNullOrEmpty(id))
-                {
-                    string val = id.StartsWith('^') ? id[1..] : id;
-                    toUnlock.Add(val);
-                }
-            }
-
-            // Add new child entries with sequential _index inside the container
-            for (int i = 0; i < toUnlock.Count; i++)
-            {
-                var elem = new XElement(PropertyElementName,
-                    new XAttribute("name", RewardPropertyName),
-                    new XAttribute("value", toUnlock[i]),
-                    new XAttribute("_index", i.ToString(CultureInfo.InvariantCulture)));
-                container.Add(elem);
-            }
-
-            doc.Save(mxmlPath);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Finds the container &lt;Property name="UnlockedPlatformRewards"&gt; element that holds
-    /// the child reward entries, or creates one if it doesn't exist.
-    /// Also handles migrating legacy flat format (entries as direct children of root)
-    /// into the correct nested container format.
-    /// </summary>
-    private static XElement FindOrCreateRewardContainer(XElement root)
-    {
-        // Look for a container element: a Property with name=UnlockedPlatformRewards
-        // that does NOT have a value attribute (i.e. it's a parent container, not an entry).
-        var container = root.Elements(PropertyElementName)
-            .FirstOrDefault(e => e.Attribute("name")?.Value == RewardPropertyName
-                              && e.Attribute("value") == null);
-
-        if (container != null)
-            return container;
-
-        // Handle legacy flat format: remove any flat entries from root before
-        // creating the container (they will be re-added as children).
-        var legacyFlat = root.Elements(PropertyElementName)
-            .Where(e => e.Attribute("name")?.Value == RewardPropertyName
-                     && e.Attribute("value") != null)
-            .ToList();
-        foreach (var el in legacyFlat)
-            el.Remove();
-
-        // Create a new container element
-        container = new XElement(PropertyElementName,
-            new XAttribute("name", RewardPropertyName));
-        root.Add(container);
-        return container;
-    }
-
-    /// <summary>
-    /// Reads unlocked rewards from MXML and writes rewards back in a single operation.
-    /// Convenience method for save operations.
-    /// </summary>
-    /// <param name="mxmlPath">Full path to GCUSERSETTINGSDATA.MXML.</param>
-    /// <param name="rewards">The reward rows from the grid.</param>
-    /// <returns>True if save succeeded or was skipped (no path), false on error.</returns>
-    internal static bool SyncPlatformRewards(string? mxmlPath, List<(string Id, bool Unlocked)> rewards)
-    {
-        if (string.IsNullOrEmpty(mxmlPath))
-            return true; // Gracefully skip if no file selected
-
-        return WriteUnlockedRewards(mxmlPath, rewards);
     }
 }
