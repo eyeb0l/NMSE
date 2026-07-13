@@ -959,15 +959,15 @@ public sealed class InventoryGrid : UserControl
             MoveOrSwap(_copiedCell.State.X, _copiedCell.State.Y, cell.State.X, cell.State.Y, true);
         });
         var active = CreateMenuItem("inventory.ctx_enable_slot", () => ToggleSlotActive(cell.State.X, cell.State.Y));
-        var enableAll = CreateMenuItem("inventory.ctx_enable_all_slots", () => { EnableAllSlots(); });
+        var enableAll = CreateMenuItem("inventory.ctx_enable_all", () => { EnableAllSlots(); });
         var pin = CreateMenuItem("inventory.ctx_pin_slot", () => TogglePinned(cell.State.X, cell.State.Y));
         var supercharge = CreateMenuItem("inventory.ctx_supercharge", () => ToggleSupercharge(cell.State.X, cell.State.Y));
         var fill = CreateMenuItem("inventory.ctx_fill_stack", () => FillStack(cell.State));
         var repair = CreateMenuItem("inventory.ctx_repair_slot", () => RepairSlot(cell.State));
-        var repairAll = CreateMenuItem("inventory.ctx_repair_all_slots", () => { RepairAll(); });
-        var storage = CreateMenuItem("inventory.auto_stack_to_storage", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToStorageRequested, AutoStackToStorageRequested));
-        var starship = CreateMenuItem("inventory.auto_stack_to_starship", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToStarshipRequested, AutoStackToStarshipRequested));
-        var freighter = CreateMenuItem("inventory.auto_stack_to_freighter", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToFreighterRequested, AutoStackToFreighterRequested));
+        var repairAll = CreateMenuItem("inventory.ctx_repair_all", () => { RepairAll(); });
+        var storage = CreateMenuItem("inventory.ctx_auto_stack_chests", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToStorageRequested, AutoStackToStorageRequested));
+        var starship = CreateMenuItem("inventory.ctx_auto_stack_starship", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToStarshipRequested, AutoStackToStarshipRequested));
+        var freighter = CreateMenuItem("inventory.ctx_auto_stack_freighter", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToFreighterRequested, AutoStackToFreighterRequested));
 
         var menu = new ContextMenu
         {

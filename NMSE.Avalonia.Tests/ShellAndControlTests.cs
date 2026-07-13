@@ -222,6 +222,37 @@ public sealed class ShellAndControlTests
     }
 
     [AvaloniaFact]
+    public void InventoryGrid_ContextMenuUsesLocalisedBulkAndAutoStackLabels()
+    {
+        UiStrings.SetDirectory(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "ui", "lang"));
+        Assert.True(UiStrings.Load("en-GB"));
+        JsonObject inventory = JsonObject.Parse("""
+            {
+              "Width": 1, "Height": 1,
+              "ValidSlotIndices": [{"X":0,"Y":0}],
+              "SpecialSlots": [],
+              "Slots": [{
+                "Type":{"InventoryType":"Product"}, "Id":"^TEST", "Amount":1, "MaxAmount":10,
+                "DamageFactor":0.0, "Index":{"X":0,"Y":0}
+              }]
+            }
+            """);
+        var grid = new InventoryGrid();
+        grid.LoadInventory(inventory);
+        var cells = (WrapPanel)GetField(grid, "_cellsPanel");
+        object cell = cells.Children[0];
+        var menu = Assert.IsType<ContextMenu>(Invoke(grid, "CreateContextMenu", cell));
+        string[] labels = menu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString() ?? string.Empty).ToArray();
+
+        Assert.Contains("Enable All Slots", labels);
+        Assert.Contains("Repair All Slots", labels);
+        Assert.Contains("Auto-Stack to Chests", labels);
+        Assert.Contains("Auto-Stack to Starship", labels);
+        Assert.Contains("Auto-Stack to Freighter", labels);
+        Assert.DoesNotContain(labels, label => label.StartsWith("inventory.", StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
     public void ItemPicker_MultiSelectTracksEverySelectedItem()
     {
         var items = new[]
