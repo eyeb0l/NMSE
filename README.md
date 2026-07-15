@@ -174,16 +174,29 @@ NMSE is licensed under the **GNU Affero General Public License** - see the [LICE
 git clone https://github.com/vectorcmdr/NMSE.git
 cd NMSE
 
-# Restore and build
-dotnet restore
-dotnet build
+# Restore and build the cross-platform Avalonia app
+dotnet restore NMSE.csproj
+dotnet build NMSE.csproj
 
-# Run tests
+# Run the app from source
+dotnet run --project NMSE.csproj
+
+# Run cross-platform tests
 dotnet test NMSE.Tests/
+
+# Run Windows-only extractor tests (Windows only)
 dotnet test NMSE.Extractor.Tests/
 ```
 
-> **Requires:** [.NET 10.0 SDK][dotnet] · Windows or cross-compilation via `EnableWindowsTargeting`
+> **Requires:** [.NET 10.0 SDK][dotnet] on Windows, Linux, or macOS. Running `dotnet build`
+> without a project builds the entire solution, including the Windows-only `NMSE.Extractor`.
+
+For a self-contained release build, replace `<RID>` with `win-x64`, `linux-x64`,
+`osx-x64`, or `osx-arm64`:
+
+```bash
+dotnet publish NMSE.csproj -c Release -r <RID> --self-contained true -p:PublishAot=false
+```
 
 ---
 
