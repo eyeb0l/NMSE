@@ -174,7 +174,7 @@ NMSE is licensed under the **GNU Affero General Public License** - see the [LICE
 git clone https://github.com/vectorcmdr/NMSE.git
 cd NMSE
 
-# Restore and build the cross-platform Avalonia app
+# Restore and compile the cross-platform Avalonia app
 dotnet restore NMSE.csproj
 dotnet build NMSE.csproj
 
@@ -191,11 +191,25 @@ dotnet test NMSE.Extractor.Tests/
 > **Requires:** [.NET 10.0 SDK][dotnet] on Windows, Linux, or macOS. Running `dotnet build`
 > without a project builds the entire solution, including the Windows-only `NMSE.Extractor`.
 
-For a self-contained release build, replace `<RID>` with `win-x64`, `linux-x64`,
-`osx-x64`, or `osx-arm64`:
+`dotnet build` produces a development executable in `Build/bin/NMSE/Debug/net10.0/`;
+it does not create a macOS `.app` bundle. To build the Apple Silicon macOS app, updater
+ZIP, and drag-install DMG:
 
 ```bash
-dotnet publish NMSE.csproj -c Release -r <RID> --self-contained true -p:PublishAot=false
+dotnet publish NMSE.csproj -c Release -r osx-arm64 --self-contained true \
+  -p:PublishAot=false -o Build/publish/osx-arm64
+scripts/macos/build-dmg.sh Build/publish/osx-arm64 osx-arm64 Build/macos
+```
+
+The packaged artifacts are written to `Build/macos/`. On an Intel Mac, replace
+`osx-arm64` with `osx-x64` in both commands.
+
+For a self-contained Windows or Linux executable, replace `<RID>` with `win-x64` or
+`linux-x64`:
+
+```bash
+dotnet publish NMSE.csproj -c Release -r <RID> --self-contained true \
+  -p:PublishAot=false -o Build/publish/<RID>
 ```
 
 ---
