@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Data;
 using Avalonia.Headless.XUnit;
 using Avalonia.Layout;
 using Avalonia.Styling;
@@ -250,6 +251,60 @@ public sealed class ShellAndControlTests
         Assert.Contains("Auto-Stack to Starship", labels);
         Assert.Contains("Auto-Stack to Freighter", labels);
         Assert.DoesNotContain(labels, label => label.StartsWith("inventory.", StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public void ItemPicker_RendersAndFiltersLoadedDatabaseItems()
+    {
+        var database = new GameItemDatabase();
+        Assert.True(database.LoadItemsFromJsonDirectory(
+            Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json")));
+        var dialog = new ItemPickerDialog();
+
+        dialog.Initialize(database, iconProvider: null);
+        dialog.Show();
+        try
+        {
+            var searchBox = (TextBox)GetField(dialog, "_searchBox");
+            var typeCombo = (ComboBox)GetField(dialog, "_typeCombo");
+            var categoryCombo = (ComboBox)GetField(dialog, "_categoryCombo");
+            var manualIdBox = (TextBox)GetField(dialog, "_manualIdBox");
+            var grid = (DataGrid)GetField(dialog, "_itemGrid");
+
+            Assert.NotEmpty(dialog.ViewModel.FilteredItems);
+            Assert.Same(dialog.ViewModel, grid.DataContext);
+            Assert.Same(dialog.ViewModel.FilteredItems, grid.ItemsSource);
+            Assert.Same(dialog.ViewModel.TypeFilters, typeCombo.ItemsSource);
+            Assert.Same(dialog.ViewModel.CategoryFilters, categoryCombo.ItemsSource);
+            Assert.Equal("(All)", typeCombo.SelectedItem);
+            Assert.Equal("(All)", categoryCombo.SelectedItem);
+
+            searchBox.Text = "carbon";
+            Assert.Equal("carbon", dialog.ViewModel.SearchText);
+            Assert.Contains(dialog.ViewModel.FilteredItems, item => item.Name == "Carbon");
+            Assert.All(dialog.ViewModel.FilteredItems, item =>
+                Assert.True(item.Name.Contains("carbon", StringComparison.OrdinalIgnoreCase) ||
+                            item.Category.Contains("carbon", StringComparison.OrdinalIgnoreCase) ||
+                            item.Id.Contains("carbon", StringComparison.OrdinalIgnoreCase)));
+
+            searchBox.Text = string.Empty;
+            int rawMaterialsIndex = dialog.ViewModel.TypeFilters.IndexOf("Raw Materials");
+            Assert.True(rawMaterialsIndex > 0);
+            typeCombo.SelectedIndex = rawMaterialsIndex;
+            Assert.Equal(rawMaterialsIndex, dialog.ViewModel.SelectedTypeIndex);
+            Assert.NotEmpty(dialog.ViewModel.FilteredItems);
+            Assert.All(dialog.ViewModel.FilteredItems, item =>
+                Assert.Equal("Raw Materials", item.Type, ignoreCase: true));
+
+            manualIdBox.Text = "^TEST";
+            Assert.Equal("^TEST", dialog.ViewModel.ManualItemId);
+            Assert.All(grid.Columns.OfType<DataGridTextColumn>(), column =>
+                Assert.IsType<ReflectionBinding>(column.Binding));
+        }
+        finally
+        {
+            dialog.Close();
+        }
     }
 
     [AvaloniaFact]

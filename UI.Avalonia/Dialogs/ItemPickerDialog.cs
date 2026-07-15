@@ -16,6 +16,9 @@ namespace NMSE.UI.Avalonia.Dialogs;
 public sealed class ItemPickerDialog : Window
 {
     private readonly ItemPickerViewModel _viewModel = new();
+    private readonly TextBox _searchBox;
+    private readonly ComboBox _typeCombo;
+    private readonly ComboBox _categoryCombo;
     private readonly DataGrid _itemGrid;
     private readonly Button _acceptButton;
     private readonly TextBox _manualIdBox;
@@ -32,8 +35,8 @@ public sealed class ItemPickerDialog : Window
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         DataContext = _viewModel;
 
-        var searchBox = new TextBox { PlaceholderText = UiStrings.Get("item_picker.filter_placeholder") };
-        searchBox.Bind(TextBox.TextProperty, new Binding(nameof(ItemPickerViewModel.SearchText))
+        _searchBox = new TextBox { PlaceholderText = UiStrings.Get("item_picker.filter_placeholder") };
+        _searchBox.Bind(TextBox.TextProperty, new ReflectionBinding(nameof(ItemPickerViewModel.SearchText))
         {
             Mode = BindingMode.TwoWay,
             UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
@@ -45,7 +48,7 @@ public sealed class ItemPickerDialog : Window
             MinWidth = 34,
             HorizontalAlignment = HorizontalAlignment.Right,
         };
-        clearButton.Click += (_, _) => searchBox.Text = string.Empty;
+        clearButton.Click += (_, _) => _searchBox.Text = string.Empty;
 
         var searchRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 8 };
         searchRow.Children.Add(new TextBlock
@@ -53,44 +56,44 @@ public sealed class ItemPickerDialog : Window
             Text = UiStrings.Get("inventory.label_search"),
             VerticalAlignment = VerticalAlignment.Center,
         });
-        searchRow.Children.Add(searchBox);
-        Grid.SetColumn(searchBox, 1);
+        searchRow.Children.Add(_searchBox);
+        Grid.SetColumn(_searchBox, 1);
         searchRow.Children.Add(clearButton);
         Grid.SetColumn(clearButton, 2);
 
-        var typeCombo = new ComboBox { MinWidth = 140 };
-        typeCombo.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(ItemPickerViewModel.TypeFilters)));
-        typeCombo.Bind(ComboBox.SelectedIndexProperty, new Binding(nameof(ItemPickerViewModel.SelectedTypeIndex))
+        _typeCombo = new ComboBox { MinWidth = 140 };
+        _typeCombo.Bind(ItemsControl.ItemsSourceProperty, new ReflectionBinding(nameof(ItemPickerViewModel.TypeFilters)));
+        _typeCombo.Bind(ComboBox.SelectedIndexProperty, new ReflectionBinding(nameof(ItemPickerViewModel.SelectedTypeIndex))
         {
             Mode = BindingMode.TwoWay,
         });
-        var categoryCombo = new ComboBox { MinWidth = 140 };
-        categoryCombo.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(ItemPickerViewModel.CategoryFilters)));
-        categoryCombo.Bind(ComboBox.SelectedIndexProperty, new Binding(nameof(ItemPickerViewModel.SelectedCategoryIndex))
+        _categoryCombo = new ComboBox { MinWidth = 140 };
+        _categoryCombo.Bind(ItemsControl.ItemsSourceProperty, new ReflectionBinding(nameof(ItemPickerViewModel.CategoryFilters)));
+        _categoryCombo.Bind(ComboBox.SelectedIndexProperty, new ReflectionBinding(nameof(ItemPickerViewModel.SelectedCategoryIndex))
         {
             Mode = BindingMode.TwoWay,
         });
 
         var filterRow = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,*"), ColumnSpacing = 8 };
         filterRow.Children.Add(CreateCenteredLabel("inventory.label_filter_type"));
-        filterRow.Children.Add(typeCombo);
-        Grid.SetColumn(typeCombo, 1);
+        filterRow.Children.Add(_typeCombo);
+        Grid.SetColumn(_typeCombo, 1);
         var categoryLabel = CreateCenteredLabel("inventory.label_filter_category");
         categoryLabel.Margin = new Thickness(12, 0, 0, 0);
         filterRow.Children.Add(categoryLabel);
         Grid.SetColumn(categoryLabel, 2);
-        filterRow.Children.Add(categoryCombo);
-        Grid.SetColumn(categoryCombo, 3);
+        filterRow.Children.Add(_categoryCombo);
+        Grid.SetColumn(_categoryCombo, 3);
 
         var filters = new StackPanel { Spacing = 8, Children = { searchRow, filterRow } };
 
         _itemGrid = CreateItemGrid();
-        _itemGrid.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(ItemPickerViewModel.FilteredItems)));
+        _itemGrid.Bind(DataGrid.ItemsSourceProperty, new ReflectionBinding(nameof(ItemPickerViewModel.FilteredItems)));
         _itemGrid.SelectionChanged += OnGridSelectionChanged;
         _itemGrid.DoubleTapped += OnGridDoubleTapped;
 
         _manualIdBox = new TextBox { PlaceholderText = UiStrings.Get("item_picker.manual_placeholder") };
-        _manualIdBox.Bind(TextBox.TextProperty, new Binding(nameof(ItemPickerViewModel.ManualItemId))
+        _manualIdBox.Bind(TextBox.TextProperty, new ReflectionBinding(nameof(ItemPickerViewModel.ManualItemId))
         {
             Mode = BindingMode.TwoWay,
             UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
@@ -166,6 +169,10 @@ public sealed class ItemPickerDialog : Window
     {
         _itemGrid.SelectionMode = multiSelect ? DataGridSelectionMode.Extended : DataGridSelectionMode.Single;
         _viewModel.Initialize(database, iconProvider, filterCategory, filterType, multiSelect);
+        _searchBox.Text = _viewModel.SearchText;
+        _typeCombo.SelectedIndex = _viewModel.SelectedTypeIndex;
+        _categoryCombo.SelectedIndex = _viewModel.SelectedCategoryIndex;
+        _manualIdBox.Text = _viewModel.ManualItemId;
         UpdateAcceptState();
     }
 
@@ -205,7 +212,7 @@ public sealed class ItemPickerDialog : Window
         new()
         {
             Header = UiStrings.Get(headerKey),
-            Binding = new Binding(property),
+            Binding = new ReflectionBinding(property),
             Width = star
                 ? new DataGridLength(1, DataGridLengthUnitType.Star)
                 : new DataGridLength(width),
