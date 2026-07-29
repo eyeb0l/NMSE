@@ -3,17 +3,20 @@ using NMSE.Models;
 
 namespace NMSE.UI.Avalonia.Panels.BasesStorage;
 
-internal sealed class BaseListItem(string displayName, JsonObject data, int dataIndex)
+internal sealed class BaseListItem(string displayName, JsonObject data, int dataIndex, bool isFreighterBase = false)
 {
     public string DisplayName { get; set; } = displayName;
     public JsonObject Data { get; } = data;
     public int DataIndex { get; set; } = dataIndex;
-    public override string ToString() => $"[{DataIndex}] {DisplayName}";
+    public bool IsFreighterBase { get; } = isFreighterBase;
+    public override string ToString() => IsFreighterBase
+        ? $"[{DataIndex}] [F] {DisplayName}"
+        : $"[{DataIndex}] {DisplayName}";
 }
 
 internal sealed class BaseObjectItem(string objectId, JsonObject data, int index)
 {
-    public string ObjectId { get; } = objectId;
+    public string ObjectId { get; set; } = objectId;
     public JsonObject Data { get; } = data;
     public int Index { get; } = index;
     public override string ToString() => $"[{Index}] {ObjectId}";

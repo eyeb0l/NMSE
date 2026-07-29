@@ -49,7 +49,7 @@ public sealed partial class PlayerPanel
             _playTimeField.Text = UiStrings.Format("player.time_format", (int)playTime.TotalHours, playTime.Minutes, playTime.Seconds);
             _thirdPersonCharacterCamera.IsChecked = SafeBool(commonState, "UsesThirdPersonCharacterCam");
 
-            PlayerName = ResolvePlayerName(commonState, playerState);
+            PlayerName = ResolvePlayerName(saveData, commonState, playerState);
             _accountName.Text = PlayerName;
             LoadOutfits(playerState);
             LoadDifficulty(playerState);
@@ -512,38 +512,54 @@ public sealed partial class PlayerPanel
         return array;
     }
 
-    private static string ResolvePlayerName(JsonObject? commonState, JsonObject playerState)
+    private static string ResolvePlayerName(JsonObject saveData, JsonObject? commonState, JsonObject playerState)
     {
         try
         {
             JsonArray? owners = commonState?.GetArray("UsedDiscoveryOwnersV2");
-            if (owners is null)
+            if (owners is not { Length: > 0 })
                 return UiStrings.Get("player.name_fallback");
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            var uids = new HashSet<string>(StringComparer.Ordinal);
-            for (int index = 0; index < owners.Length; index++)
+
+            int primaryIndex = 0;
+            string platform = SafeString(saveData, "Platform");
+            string expectedPlatformToken = platform.StartsWith("Win", StringComparison.OrdinalIgnoreCase) ? "ST"
+                : platform.StartsWith("PS", StringComparison.OrdinalIgnoreCase) ? "PS"
+                : platform.StartsWith("XB", StringComparison.OrdinalIgnoreCase) ? "XB"
+                : string.Empty;
+            if (expectedPlatformToken.Length > 0)
             {
-                JsonObject? owner = owners.GetObject(index);
-                string name = SafeString(owner, "USN");
-                string uid = SafeString(owner, "UID");
-                if (name.Length > 0) names.Add(name);
-                if (uid.Length > 0) uids.Add(uid);
-            }
-            if (names.Count == 0 && uids.Count > 0 && playerState.GetArray("PersistentPlayerBases") is { } bases)
-            {
-                for (int index = 0; index < bases.Length; index++)
+                for (int index = 0; index < owners.Length; index++)
                 {
-                    JsonObject? owner = bases.GetObject(index)?.GetObject("Owner");
-                    if (uids.Contains(SafeString(owner, "UID")) && SafeString(owner, "USN") is { Length: > 0 } name)
-                        names.Add(name);
+                    if (string.Equals(SafeString(owners.GetObject(index), "PTK"), expectedPlatformToken, StringComparison.Ordinal))
+                    {
+                        primaryIndex = index;
+                        break;
+                    }
                 }
             }
-            return names.Count == 0 ? UiStrings.Get("player.name_fallback") : string.Join(" / ", names);
+
+            JsonObject? primaryOwner = owners.GetObject(primaryIndex);
+            string name = SafeString(primaryOwner, "USN");
+            if (name.Length > 0)
+                return name;
+
+            string uid = SafeString(primaryOwner, "UID");
+            if (uid.Length == 0 || playerState.GetArray("PersistentPlayerBases") is not { } bases)
+                return UiStrings.Get("player.name_fallback");
+
+            for (int index = 0; index < bases.Length; index++)
+            {
+                JsonObject? owner = bases.GetObject(index)?.GetObject("Owner");
+                if (string.Equals(SafeString(owner, "UID"), uid, StringComparison.Ordinal) &&
+                    SafeString(owner, "USN") is { Length: > 0 } baseOwnerName)
+                    return baseOwnerName;
+            }
         }
         catch
         {
-            return UiStrings.Get("player.name_fallback");
         }
+
+        return UiStrings.Get("player.name_fallback");
     }
 
     private static bool IsSameSystem(JsonObject? address, int reality, int x, int y, int z, int system)

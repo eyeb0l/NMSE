@@ -13,7 +13,7 @@ using NMSE.UI.Avalonia.Controls;
 
 namespace NMSE.UI.Avalonia.Panels.BasesStorage;
 
-public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
+public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
 {
     private readonly ObservableCollection<BaseListItem> _baseItems = [];
     private readonly ObservableCollection<NpcWorkerItem> _workers = [];
@@ -32,7 +32,7 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
     private readonly TextBox _address = new();
     private readonly TextBox _galaxy = new();
     private readonly TextBox _timestamp = new();
-    private readonly TextBox _ownerTimestamp = new();
+    private readonly TextBox _ownerTimestamp = new() { IsReadOnly = true };
     private readonly InvariantNumericTextBox _version = new() { Minimum = 0, Maximum = int.MaxValue };
     private readonly TextBlock _status = new() { Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap };
     private readonly Border _details = new() { Padding = new Thickness(8) };
@@ -94,11 +94,14 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
         _labels[5] = BaseUi.AddRow(form, row++, "Position:", VectorEditor(_position)); _labels[6] = BaseUi.AddRow(form, row++, "Forward:", VectorEditor(_forward));
         _labels[7] = BaseUi.AddRow(form, row++, "Galactic Address:", _address); _labels[8] = BaseUi.AddRow(form, row++, "Galaxy / Reality:", _galaxy);
         _labels[9] = BaseUi.AddRow(form, row++, "Timestamp:", _timestamp); _labels[10] = BaseUi.AddRow(form, row++, "Owner Timestamp:", _ownerTimestamp);
-        _labels[11] = BaseUi.AddRow(form, row++, "Base Version:", _version); _labels[12] = BaseUi.AddRow(form, row++, "Base Objects:", _objectList);
+        _labels[11] = BaseUi.AddRow(form, row++, "Base Version:", _version);
         _labels[13] = BaseUi.AddRow(form, row++, "Part Counts:", _parts);
+        AppendAdvancedBaseMetadataRows(form, ref row);
         var baseActions = new WrapPanel { Children = { _export, _import, _overwrite, _moveComputer, _delete } }; BaseUi.AddRow(form, row++, string.Empty, baseActions);
         var terrainActions = new WrapPanel { Children = { _clearTerrain, _clearAllTerrain, _clearOutsideBases } }; BaseUi.AddRow(form, row++, string.Empty, terrainActions);
-        _details.Child = new ScrollViewer { Content = form };
+        _infoTab.Content = new ScrollViewer { Content = form };
+        _objectsTab.Content = BuildObjectsEditor();
+        _details.Child = new TabControl { ItemsSource = new[] { _infoTab, _objectsTab } };
 
         var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
         _baseListTitle = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold }; left.Children.Add(_baseListTitle); Grid.SetRow(_baseList, 1); left.Children.Add(_baseList);
@@ -134,8 +137,15 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
             if (bases != null) for (int i = 0; i < bases.Length; i++)
             {
                 JsonObject value = bases.GetObject(i); string type = value.GetObject("BaseType")?.GetString("PersistentBaseTypes") ?? value.GetString("BaseType") ?? string.Empty;
-                if (type.Equals("HomePlanetBase", StringComparison.OrdinalIgnoreCase) && TryInt(value, "BaseVersion") >= 3)
-                    _baseItems.Add(new BaseListItem(value.GetString("Name") ?? UiStrings.Format("base.fallback_base_name", i + 1), value, i));
+                bool isHome = type.Equals("HomePlanetBase", StringComparison.OrdinalIgnoreCase);
+                bool isFreighter = type.Equals("FreighterBase", StringComparison.OrdinalIgnoreCase);
+                if ((isHome || isFreighter) && TryInt(value, "BaseVersion") >= 3)
+                {
+                    string name = isFreighter
+                        ? _playerState?.GetString("PlayerFreighterName") ?? UiStrings.Format("base.fallback_base_name", i + 1)
+                        : value.GetString("Name") ?? UiStrings.Format("base.fallback_base_name", i + 1);
+                    _baseItems.Add(new BaseListItem(name, value, i, isFreighter));
+                }
             }
             _worker.SelectedIndex = _workers.Count > 0 ? 0 : -1; _baseList.SelectedIndex = _baseItems.Count > 0 ? 0 : -1;
             LoadSelectedWorker(); LoadSelectedBase();
@@ -143,7 +153,7 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
         finally { _loading = false; UpdateEnabled(); }
     }
 
-    public void SaveData(JsonObject saveData) { CommitWorkerSeed(force: true); CommitSelectedBase(force: true); }
+    public void SaveData(JsonObject saveData) { CommitWorkerSeed(force: true); CommitAdvancedFields(force: true); CommitSelectedObject(force: true); CommitSelectedBase(force: true); }
 
     private void LoadSelectedWorker()
     {
@@ -174,22 +184,21 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
     private void LoadSelectedBase()
     {
         BaseListItem? item = SelectedBase; _details.IsVisible = item != null; _objects.Clear(); _partCounts.Clear();
-        if (item == null) { UpdateEnabled(); return; }
+        if (item == null) { ClearAdvancedFields(); UpdateEnabled(); return; }
         _loading = true;
         try
         {
-            JsonObject value = item.Data; _name.Text = value.GetString("Name") ?? string.Empty; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
+            JsonObject value = item.Data; _name.Text = item.IsFreighterBase ? _playerState?.GetString("PlayerFreighterName") ?? item.DisplayName : value.GetString("Name") ?? string.Empty; _name.IsReadOnly = item.IsFreighterBase; _name.IsEnabled = !item.IsFreighterBase; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
             ReadVector(value.GetArray("Position"), _position); ReadVector(value.GetArray("Forward"), _forward); _address.Text = Scalar(value.Get("GalacticAddress"));
             _galaxy.Text = Scalar(value.Get("Galaxy") ?? value.Get("RealityIndex")); _timestamp.Text = Scalar(value.Get("Timestamp")); _ownerTimestamp.Text = Scalar(value.GetObject("Owner")?.Get("TS")); _version.NumericValue = TryInt(value, "BaseVersion");
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             if (objects != null) for (int i = 0; i < objects.Length; i++)
             {
                 JsonObject obj = objects.GetObject(i); string id = obj.GetString("ObjectID") ?? UiStrings.Get("common.unknown");
-                if (id != "^BASE_FLAG") _objects.Add(new BaseObjectItem(id, obj, i));
                 counts[id] = counts.GetValueOrDefault(id) + 1;
             }
             foreach ((string id, int count) in counts.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key)) _partCounts.Add($"{count,5} × {id}");
-            _objectList.SelectedIndex = _objects.Count > 0 ? 0 : -1;
+            LoadAdvancedFields(item);
         }
         finally { _loading = false; UpdateEnabled(); }
     }
@@ -197,7 +206,7 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
     private void CommitSelectedBase(bool force = false)
     {
         if ((_loading && !force) || SelectedBase is not { } item) return; JsonObject value = item.Data;
-        string newName = _name.Text?.Trim() ?? string.Empty; if (newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
+        string newName = _name.Text?.Trim() ?? string.Empty; if (!item.IsFreighterBase && newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
         WriteVector(value.GetArray("Position"), _position); WriteVector(value.GetArray("Forward"), _forward); SetScalar(value, "GalacticAddress", _address.Text);
         string galaxyKey = value.Contains("Galaxy") ? "Galaxy" : "RealityIndex"; SetScalar(value, galaxyKey, _galaxy.Text); SetScalar(value, "Timestamp", _timestamp.Text);
         if (value.GetObject("Owner") is { } owner) SetScalar(owner, "TS", _ownerTimestamp.Text); _version.TryCommit(); RawNumberGuard.SetInt(value, "BaseVersion", (int)(_version.NumericValue ?? 0));
@@ -248,16 +257,17 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
     private async Task DeleteBaseAsync()
     {
         if (SelectedBase is not { } selected || _playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
-        if (!await ConfirmOperationAsync(UiStrings.Get("base.delete_base_title"), UiStrings.Format("base.delete_base_confirm", selected.DisplayName))) return;
+        string confirmKey = selected.IsFreighterBase ? "base.delete_freighter_base_confirm" : "base.delete_base_confirm";
+        if (!await ConfirmOperationAsync(UiStrings.Get("base.delete_base_title"), UiStrings.Format(confirmKey, selected.DisplayName))) return;
         bases.RemoveAt(selected.DataIndex); _baseItems.Remove(selected); foreach (BaseListItem item in _baseItems) if (item.DataIndex > selected.DataIndex) item.DataIndex--;
         _baseList.SelectedIndex = _baseItems.Count > 0 ? 0 : -1; LoadSelectedBase(); RaiseModified();
     }
 
     private async Task MoveBaseComputerAsync()
     {
-        if (SelectedBase is not { } item) return;
-        if (_objectList.SelectedItem is not BaseObjectItem target) { await ShowMessageAsync(UiStrings.Get("base.move_basecomp_title"), UiStrings.Get("base.move_basecomp_no_objects")); return; }
-        JsonObject? flag = _objects.FirstOrDefault(value => value.ObjectId == "^BASE_FLAG")?.Data; if (flag == null) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Get("base.move_basecomp_not_found")); return; }
+        if (SelectedBase is not { IsFreighterBase: false } item) return;
+        if (_objectList.SelectedItem is not BaseObjectItem target || target.ObjectId == "^BASE_FLAG") { await ShowMessageAsync(UiStrings.Get("base.move_basecomp_title"), UiStrings.Get("base.move_basecomp_no_objects")); return; }
+        JsonObject? flag = FindObject(item.Data.GetArray("Objects"), "^BASE_FLAG"); if (flag == null) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Get("base.move_basecomp_not_found")); return; }
         if (ReferenceEquals(flag, target.Data)) return;
         if (!await ConfirmOperationAsync(UiStrings.Get("base.move_basecomp_title"), UiStrings.Get("base.move_basecomp_warning"))) return;
         try { BaseLogic.MoveBaseComputer(item.Data, flag, target.Data); LoadSelectedBase(); RaiseModified(); await ShowMessageAsync(UiStrings.Get("base.move_basecomp_success_title"), UiStrings.Get("base.move_basecomp_success")); }
@@ -303,11 +313,12 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
 
     private void UpdateEnabled()
     {
-        bool hasBase = SelectedBase != null; bool hasWorker = _worker.SelectedItem is NpcWorkerItem; _summon.IsEnabled = hasBase && hasWorker;
-        foreach (Button button in new[] { _export, _import, _overwrite, _delete, _clearTerrain }) button.IsEnabled = hasBase;
-        _moveComputer.IsEnabled = hasBase && _objects.Count > 0;
+        bool hasBase = SelectedBase != null; bool isFreighter = SelectedBase?.IsFreighterBase == true; bool hasWorker = _worker.SelectedItem is NpcWorkerItem; _summon.IsEnabled = hasBase && hasWorker;
+        foreach (Button button in new[] { _export, _import, _overwrite, _delete }) button.IsEnabled = hasBase;
+        _clearTerrain.IsEnabled = hasBase && !isFreighter;
+        _moveComputer.IsEnabled = hasBase && !isFreighter && _objectList.SelectedItem is BaseObjectItem { ObjectId: not "^BASE_FLAG" };
         List<BaseListItem> ordered = _baseItems.OrderBy(item => item.DataIndex).ToList(); int index = SelectedBase == null ? -1 : ordered.IndexOf(SelectedBase); _top.IsEnabled = _up.IsEnabled = index > 0; _down.IsEnabled = _bottom.IsEnabled = index >= 0 && index < ordered.Count - 1; _sortAsc.IsEnabled = _sortDesc.IsEnabled = ordered.Count > 1;
-        _clearAllTerrain.IsEnabled = _clearOutsideBases.IsEnabled = _playerState != null;
+        _clearAllTerrain.IsEnabled = _clearOutsideBases.IsEnabled = _playerState != null && !isFreighter;
     }
 
     public void ApplyUiLocalisation()
@@ -317,12 +328,14 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
         {
             _baseListTitle.Text = UiStrings.Get("base.base_list_title"); _npcHeader.Text = UiStrings.Get("base.npc_header"); _baseHeader.Text = UiStrings.Get("base.base_header");
             _labels[0].Text = UiStrings.Get("base.npc_label"); _labels[1].Text = UiStrings.Get("base.npc_race_label"); _labels[2].Text = UiStrings.Get("base.npc_seed_label"); _labels[3].Text = UiStrings.Get("base.name_label"); _labels[4].Text = UiStrings.Get("base.items_label");
+            _labels[5].Text = UiStrings.Get("base.obj_position"); _labels[6].Text = UiStrings.Get("base.obj_forward"); _labels[7].Text = UiStrings.Get("base.obj_galactic_address"); _labels[11].Text = UiStrings.Get("base.obj_base_version");
             _generateNpcSeed.Content = UiStrings.Get("common.generate"); _summon.Content = UiStrings.Get("base.summon_npc"); _export.Content = UiStrings.Get("base.export"); _import.Content = UiStrings.Get("base.import"); _overwrite.Content = UiStrings.Get("base.confirm_import_title");
             _moveComputer.Content = UiStrings.Get("base.move_basecomp"); _delete.Content = UiStrings.Get("base.delete_base"); _top.Content = UiStrings.Get("base.move_base_to_top"); _up.Content = UiStrings.Get("base.move_base_up"); _down.Content = UiStrings.Get("base.move_base_down"); _bottom.Content = UiStrings.Get("base.move_base_to_bottom");
             _sortAsc.Content = UiStrings.Get("base.sort_az"); _sortDesc.Content = UiStrings.Get("base.sort_za"); _clearTerrain.Content = UiStrings.Get("base.clear_terrain"); _clearAllTerrain.Content = UiStrings.Get("base.clear_all_terrain"); _clearOutsideBases.Content = UiStrings.Get("base.clear_all_terrain_except_bases");
             string? race = (_race.SelectedItem as NpcRaceItem)?.InternalName; _race.ItemsSource = BaseNpcRaces.Items(); _race.SelectedItem = _race.Items.Cast<object?>().OfType<NpcRaceItem>().FirstOrDefault(value => value.InternalName == race);
             NpcWorkerItem? selectedWorker = _worker.SelectedItem as NpcWorkerItem; NpcWorkerItem[] workers = _workers.ToArray(); _workers.Clear(); foreach (NpcWorkerItem worker in workers) _workers.Add(worker); _worker.SelectedItem = selectedWorker;
             RefreshBaseList(SelectedBase);
+            ApplyAdvancedLocalisation();
         }
         finally { _loading = old; }
     }
@@ -334,6 +347,16 @@ public sealed class BasesEditorPanel : UserControl, ISaveEditorPanel, IGoToJsonS
     private static void SetScalar(JsonObject obj, string key, string? text) { if (string.IsNullOrWhiteSpace(text)) return; string value = text.Trim(); if (long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long integer)) obj.Set(key, integer); else if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number)) obj.Set(key, number); else obj.Set(key, value); }
     private static int TryInt(JsonObject obj, string key) { try { return obj.GetInt(key); } catch { return 0; } }
     private static bool TryBool(JsonObject obj, string key) { try { return obj.GetBool(key); } catch { return false; } }
+    private static JsonObject? FindObject(JsonArray? objects, string objectId)
+    {
+        if (objects == null) return null;
+        for (int i = 0; i < objects.Length; i++)
+        {
+            try { JsonObject value = objects.GetObject(i); if (value.GetString("ObjectID") == objectId) return value; }
+            catch { }
+        }
+        return null;
+    }
     private void RequestGoTo(string path) => GoToJsonRequested?.Invoke(this, new GoToJsonRequestEventArgs(path));
     private void RaiseModified() { if (!_loading) DataModified?.Invoke(this, EventArgs.Empty); }
     private async Task<bool> ConfirmOperationAsync(string title, string message) { if (ConfirmAsync != null) return await ConfirmAsync(title, message, CancellationToken.None); return TopLevel.GetTopLevel(this) is Window owner && await BaseUi.ConfirmAsync(owner, title, message); }
