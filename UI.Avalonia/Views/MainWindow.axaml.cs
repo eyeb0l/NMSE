@@ -1,4 +1,4 @@
-using System.IO.Compression;
+using System.Globalization;
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
@@ -14,6 +14,7 @@ using NMSE.Data;
 using NMSE.IO;
 using NMSE.Models;
 using NMSE.UI.Avalonia.Contracts;
+using NMSE.UI.Avalonia.Controls;
 using NMSE.UI.Avalonia.Coordination;
 using NMSE.UI.Avalonia.Dialogs;
 using NMSE.UI.Avalonia.Panels.ExportSettings;
@@ -37,12 +38,18 @@ namespace NMSE.UI.Avalonia.Views;
 
 public sealed partial class MainWindow : Window
 {
+    private sealed record EditorLock(
+        Control Editor,
+        NoSaveOverlay Overlay,
+        bool IsEnabledWhenUnlocked);
+
     private const string GitHubUrl = "https://github.com/vectorcmdr/NMSE";
     private const string UserGuideUrl = "https://github.com/vectorcmdr/NMSE/wiki";
     private const string SponsorUrl = "https://github.com/sponsors/vectorcmdr";
     private const string ReleaseNotesUrl = "https://github.com/vectorcmdr/NMSE/releases/latest";
 
     private readonly List<ISaveEditorPanel> _loadedPanels = [];
+    private readonly List<EditorLock> _editorLocks = [];
     private readonly AvaloniaResourceCatalog _resources = new();
     private readonly SaveEditorCoordinator _panelCoordinator = new();
     private readonly IDesktopServices _desktopServices;
@@ -206,6 +213,8 @@ public sealed partial class MainWindow : Window
 
         _exportSettingsPanel?.ApplyUiLocalisation();
         _rawJsonPanel?.ApplyUiLocalisation();
+        foreach (EditorLock editorLock in _editorLocks)
+            editorLock.Overlay.RefreshLocalisation();
     }
 
     private void InitializePortedPanels()
@@ -213,7 +222,7 @@ public sealed partial class MainWindow : Window
         if (_playerPanel is null)
         {
             _playerPanel = new PlayerPanel(_desktopServices, _resources.Icons);
-            PlayerTab.Content = _playerPanel;
+            InstallEditorLock(PlayerTab, _playerPanel);
             _panelCoordinator.Register(0, _playerPanel);
             _playerPanel.GoToJsonRequested += OnGoToJsonRequested;
             _playerPanel.ReloadRequested += (_, _) => OnReload(this, EventArgs.Empty);
@@ -228,7 +237,7 @@ public sealed partial class MainWindow : Window
         if (_milestonePanel is null)
         {
             _milestonePanel = new MilestonePanel(_resources);
-            MilestonesTab.Content = _milestonePanel;
+            InstallEditorLock(MilestonesTab, _milestonePanel);
             _panelCoordinator.Register(9, _milestonePanel);
             _milestonePanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -236,7 +245,7 @@ public sealed partial class MainWindow : Window
         if (_exosuitPanel is null)
         {
             _exosuitPanel = new ExosuitPanel(_resources.Items, _resources.Icons, _desktopServices);
-            ExosuitTab.Content = _exosuitPanel;
+            InstallEditorLock(ExosuitTab, _exosuitPanel);
             _panelCoordinator.Register(1, _exosuitPanel);
             _exosuitPanel.GoToJsonRequested += OnGoToJsonRequested;
             _exosuitPanel.CrossInventoryTransferCompleted += (_, _) =>
@@ -246,7 +255,7 @@ public sealed partial class MainWindow : Window
         if (_multitoolPanel is null)
         {
             _multitoolPanel = new MultitoolPanel(_resources.Items, _resources.Icons, _desktopServices);
-            MultitoolsTab.Content = _multitoolPanel;
+            InstallEditorLock(MultitoolsTab, _multitoolPanel);
             _panelCoordinator.Register(2, _multitoolPanel);
             _multitoolPanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -254,7 +263,7 @@ public sealed partial class MainWindow : Window
         if (_starshipPanel is null)
         {
             _starshipPanel = new StarshipPanel(_resources.Items, _resources.Icons, _desktopServices);
-            StarshipsTab.Content = _starshipPanel;
+            InstallEditorLock(StarshipsTab, _starshipPanel);
             _panelCoordinator.Register(3, _starshipPanel);
             _starshipPanel.GoToJsonRequested += OnGoToJsonRequested;
             _starshipPanel.CrossInventoryTransferCompleted += (_, _) =>
@@ -272,7 +281,7 @@ public sealed partial class MainWindow : Window
                     (title, message) => ShowMessageAsync(title, message, showCancel: true),
                     async (title, message) => { await ShowMessageAsync(title, message); },
                     async (title, message) => { await ShowMessageAsync(title, message); }));
-            ExocraftTab.Content = _exocraftPanel;
+            InstallEditorLock(ExocraftTab, _exocraftPanel);
             _panelCoordinator.Register(5, _exocraftPanel);
             _exocraftPanel.GoToJsonRequested += OnGoToJsonRequested;
             _exocraftPanel.CrossInventoryTransferCompleted += (_, _) =>
@@ -294,7 +303,7 @@ public sealed partial class MainWindow : Window
                 ConfirmAsync = async (title, message, _) =>
                     await ShowMessageAsync(title, message, showCancel: true),
             };
-            RawJsonTab.Content = _rawJsonPanel;
+            InstallEditorLock(RawJsonTab, _rawJsonPanel);
             _panelCoordinator.Register(14, _rawJsonPanel);
         }
 
@@ -306,7 +315,7 @@ public sealed partial class MainWindow : Window
                 (title, message) => ShowMessageAsync(title, message, showCancel: true),
                 async (title, message) => { await ShowMessageAsync(title, message); },
                 async (title, message) => { await ShowMessageAsync(title, message); }));
-            ByteBeatsTab.Content = _byteBeatPanel;
+            InstallEditorLock(ByteBeatsTab, _byteBeatPanel);
             _panelCoordinator.Register(11, _byteBeatPanel);
             _byteBeatPanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -318,7 +327,7 @@ public sealed partial class MainWindow : Window
                 request => PickSaveFileAsync(request.Title, request.SuggestedFileName, request.Extensions),
                 (title, message) => ShowMessageAsync(title, message, showCancel: true),
                 async (title, message) => { await ShowMessageAsync(title, message); }));
-            SettlementsTab.Content = _settlementPanel;
+            InstallEditorLock(SettlementsTab, _settlementPanel);
             _panelCoordinator.Register(10, _settlementPanel);
             _settlementPanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -329,7 +338,7 @@ public sealed partial class MainWindow : Window
                 request => PickOpenFileAsync(request.Title, request.Extensions),
                 async (title, message) => { await ShowMessageAsync(title, message); },
                 async (title, message) => { await ShowMessageAsync(title, message); }));
-            AccountTab.Content = _accountRewardsPanel;
+            InstallEditorLock(AccountTab, _accountRewardsPanel);
             _panelCoordinator.Register(12, _accountRewardsPanel);
         }
 
@@ -342,7 +351,7 @@ public sealed partial class MainWindow : Window
                 ConfirmAsync = async (title, message, _) =>
                     await ShowMessageAsync(title, message, showCancel: true),
             };
-            FleetTab.Content = _fleetPanel;
+            InstallEditorLock(FleetTab, _fleetPanel);
             _panelCoordinator.Register(4, _fleetPanel);
             _fleetPanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -358,7 +367,7 @@ public sealed partial class MainWindow : Window
                 url => _desktopServices.OpenUrlAsync(new Uri(url)),
                 colour => ColourDialogWindow.ShowAsync(this, colour),
                 (title, choices) => ChoiceDialogWindow.ShowAsync(this, title, choices)));
-            CompanionsTab.Content = _companionPanel;
+            InstallEditorLock(CompanionsTab, _companionPanel);
             _panelCoordinator.Register(6, _companionPanel);
             _companionPanel.GoToJsonRequested += OnGoToJsonRequested;
             _companionPanel.ExosuitCargoModified += (_, _) => _exosuitPanel?.RefreshAfterExternalTransfer();
@@ -373,7 +382,7 @@ public sealed partial class MainWindow : Window
                 ConfirmAsync = async (title, message, _) =>
                     await ShowMessageAsync(title, message, showCancel: true),
             };
-            BasesTab.Content = _basesStoragePanel;
+            InstallEditorLock(BasesTab, _basesStoragePanel);
             _panelCoordinator.Register(7, _basesStoragePanel);
             _basesStoragePanel.GoToJsonRequested += OnGoToJsonRequested;
         }
@@ -394,9 +403,36 @@ public sealed partial class MainWindow : Window
                     await ShowMessageAsync(title, message),
                 OpenUrlAsync = OpenCatalogueUrlAsync,
             };
-            CatalogueTab.Content = _cataloguePanel;
+            InstallEditorLock(CatalogueTab, _cataloguePanel);
             _panelCoordinator.Register(8, _cataloguePanel, purgeWhenInactive: true);
             _cataloguePanel.GoToJsonRequested += OnGoToJsonRequested;
+        }
+
+        UpdateEditorLockState();
+    }
+
+    /// <summary>
+    /// Wraps a save-backed editor with a localized overlay while keeping the tab
+    /// header selectable. Export Settings is intentionally installed directly and
+    /// remains available before a save is loaded.
+    /// </summary>
+    private void InstallEditorLock(TabItem tab, Control editor)
+    {
+        var overlay = new NoSaveOverlay();
+        var host = new Grid();
+        host.Children.Add(editor);
+        host.Children.Add(overlay);
+        tab.Content = host;
+        _editorLocks.Add(new EditorLock(editor, overlay, editor.IsEnabled));
+    }
+
+    private void UpdateEditorLockState()
+    {
+        bool locked = _currentSaveData is null;
+        foreach (EditorLock editorLock in _editorLocks)
+        {
+            editorLock.Editor.IsEnabled = locked ? false : editorLock.IsEnabledWhenUnlocked;
+            editorLock.Overlay.IsVisible = locked;
         }
     }
 
@@ -698,66 +734,109 @@ public sealed partial class MainWindow : Window
 
     private async Task RestoreLatestBackupAsync(bool currentOnly)
     {
-        if (_currentSession is null)
+        SaveSession? session = _currentSession;
+        if (session is null)
             return;
-        string? saveDirectory = Path.GetDirectoryName(_currentSession.SourcePath);
+        string? saveDirectory = Path.GetDirectoryName(session.SourcePath);
         if (string.IsNullOrWhiteSpace(saveDirectory))
             return;
 
-        string pattern = $"{new DirectoryInfo(saveDirectory).Name}_*.zip";
-        string? backup = SaveFileManager.FindExistingBackupRoots()
-            .SelectMany(root => Directory.EnumerateFiles(root, pattern))
-            .OrderByDescending(File.GetCreationTimeUtc)
-            .FirstOrDefault();
-        if (backup is null)
-        {
-            await ShowMessageAsync("Restore Backup", "No backup is available for this save directory.");
-            return;
-        }
-
-        bool confirmed = await ShowMessageAsync(
-            "Restore Backup",
-            currentOnly
-                ? $"Restore {Path.GetFileName(_currentSession.SourcePath)} from {Path.GetFileName(backup)}?"
-                : $"Restore every file from {Path.GetFileName(backup)}?",
-            showCancel: true);
-        if (!confirmed)
-            return;
-
-        SetLoading(true, "Restoring backup…");
+        bool loading = false;
         try
         {
-            using ZipArchive archive = ZipFile.OpenRead(backup);
-            bool restoreSingleFile = currentOnly && _currentSession.Kind != SaveSessionKind.XboxContainer;
-            IEnumerable<ZipArchiveEntry> entries = restoreSingleFile
-                ? archive.Entries.Where(entry =>
-                    Path.GetFileName(entry.FullName).Equals(
-                        Path.GetFileName(_currentSession.SourcePath),
-                        StringComparison.OrdinalIgnoreCase))
-                : archive.Entries;
-            string destinationRoot = Path.GetFullPath(saveDirectory)
-                .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            foreach (ZipArchiveEntry entry in entries)
+            List<string> backups = SaveFileManager.FindBackupZips(saveDirectory);
+            if (backups.Count == 0)
             {
-                if (string.IsNullOrEmpty(entry.Name))
-                    continue;
-                string destination = Path.GetFullPath(Path.Combine(saveDirectory, entry.FullName));
-                if (!destination.StartsWith(destinationRoot, StringComparison.Ordinal))
-                    throw new InvalidDataException($"Unsafe backup entry: {entry.FullName}");
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                entry.ExtractToFile(destination, overwrite: true);
+                await ShowMessageAsync(
+                    UiStrings.Get("dialog.restore_backup"),
+                    UiStrings.Get("dialog.no_backup_zips"));
+                return;
             }
-            await LoadSaveDataAsync(_currentSession);
-            SetStatus($"Restored {Path.GetFileName(backup)}");
+
+            string? backup = await BackupPickerDialog.ShowAsync(this, backups);
+            if (backup is null)
+                return;
+
+            string backupName = Path.GetFileName(backup);
+            string fileName = Path.GetFileName(session.SourcePath);
+            bool restoreSingleFile = currentOnly && session.Kind != SaveSessionKind.XboxContainer;
+            if (!SaveFileManager.BackupContainsFile(backup, fileName))
+            {
+                await ShowMessageAsync(
+                    UiStrings.Get(restoreSingleFile ? "dialog.restore_backup_single" : "dialog.restore_backup"),
+                    UiStrings.Format("dialog.restore_file_not_found", fileName, backupName));
+                return;
+            }
+
+            List<string> entryNames = SaveFileManager.GetBackupEntryNames(backup);
+            string fileList = restoreSingleFile
+                ? BuildBackupFileList([fileName], 1)
+                : BuildBackupFileList(entryNames, 15);
+            string created = File.GetCreationTime(backup).ToString("g", CultureInfo.CurrentCulture);
+            bool confirmed = await ShowMessageAsync(
+                UiStrings.Get(restoreSingleFile ? "dialog.restore_backup_single" : "dialog.restore_backup"),
+                UiStrings.Format(
+                    restoreSingleFile ? "dialog.restore_single_confirm" : "dialog.restore_all_confirm",
+                    fileList,
+                    backupName,
+                    created),
+                showCancel: true);
+            if (!confirmed)
+                return;
+
+            SetLoading(true, "Restoring backup…");
+            loading = true;
+            int restoredCount;
+            if (restoreSingleFile)
+            {
+                restoredCount = SaveFileManager.RestoreFileFromBackup(
+                    backup,
+                    fileName,
+                    session.SourcePath)
+                    ? 1
+                    : 0;
+            }
+            else
+            {
+                restoredCount = SaveFileManager.RestoreBackupToDirectory(backup, saveDirectory).Count;
+            }
+
+            if (restoredCount == 0)
+                throw new InvalidDataException(
+                    UiStrings.Format("dialog.restore_file_not_found", fileName, backupName));
+
+            await LoadSaveDataAsync(session);
+            SetStatus(restoreSingleFile
+                ? UiStrings.Format("status.restored_file", fileName, backupName)
+                : UiStrings.Format("status.restored_folder", restoredCount, backupName));
         }
         catch (Exception ex)
         {
-            await ShowMessageAsync("Restore Failed", ex.Message);
+            await ShowMessageAsync(
+                UiStrings.Get("dialog.restore_backup"),
+                UiStrings.Format("dialog.restore_failed", ex.Message));
         }
         finally
         {
-            SetLoading(false);
+            if (loading)
+                SetLoading(false);
         }
+    }
+
+    private static string BuildBackupFileList(IReadOnlyList<string> entryNames, int maxItems)
+    {
+        string[] files = entryNames
+            .Where(name => !string.IsNullOrWhiteSpace(name)
+                && !name.EndsWith("/", StringComparison.Ordinal)
+                && !name.EndsWith("\\", StringComparison.Ordinal))
+            .ToArray();
+        var lines = files
+            .Take(maxItems)
+            .Select(name => $"• {name}")
+            .ToList();
+        if (files.Length > maxItems)
+            lines.Add(UiStrings.Format("dialog.restore_more_files", files.Length - maxItems));
+        return string.Join(Environment.NewLine, lines);
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -1459,6 +1538,7 @@ public sealed partial class MainWindow : Window
         SaveButton.IsEnabled = enabled;
         SaveMenuItem.IsEnabled = enabled;
         SaveAsMenuItem.IsEnabled = enabled;
+        UpdateEditorLockState();
         Title = _isDirty ? "NMSE — No Man's Save Editor *" : "NMSE — No Man's Save Editor";
     }
 

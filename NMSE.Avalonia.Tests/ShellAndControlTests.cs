@@ -51,11 +51,49 @@ public sealed class ShellAndControlTests
             "ExportSettingsPanel", "RawJsonPanel",
         ];
         string[] actualPanelTypes = tabs.Items.OfType<TabItem>()
-            .Select(tab => tab.Content?.GetType().Name ?? string.Empty)
+            .Select(tab => GetTabPanel(tab).GetType().Name)
             .ToArray();
 
         Assert.Equal(expectedPanelTypes, actualPanelTypes);
         Assert.DoesNotContain(actualPanelTypes, type => type.Contains("Placeholder", StringComparison.Ordinal));
+        CloseWithoutPrompt(window);
+    }
+
+    [AvaloniaFact]
+    public void MainWindow_LocksSaveBackedEditorsUntilASaveIsLoaded()
+    {
+        var window = new MainWindow();
+        Invoke(window, "InitializePortedPanels");
+        var tabs = window.FindControl<TabControl>("MainTabs")!;
+
+        for (int index = 0; index < tabs.ItemCount; index++)
+        {
+            var tab = (TabItem)tabs.Items[index]!;
+            if (index == 13)
+            {
+                Assert.Equal("ExportSettingsPanel", tab.Content!.GetType().Name);
+                Assert.True(((Control)tab.Content).IsEnabled);
+                continue;
+            }
+
+            var host = Assert.IsType<Grid>(tab.Content);
+            Assert.Equal(2, host.Children.Count);
+            Assert.False(host.Children[0].IsEnabled);
+            Assert.True(host.Children[1].IsVisible);
+        }
+
+        SetField(window, "_currentSaveData", new JsonObject());
+        Invoke(window, "UpdateSaveActions");
+
+        for (int index = 0; index < tabs.ItemCount; index++)
+        {
+            if (index == 13)
+                continue;
+            var host = Assert.IsType<Grid>(((TabItem)tabs.Items[index]!).Content);
+            Assert.True(host.Children[0].IsEnabled);
+            Assert.False(host.Children[1].IsVisible);
+        }
+
         CloseWithoutPrompt(window);
     }
 
@@ -90,7 +128,7 @@ public sealed class ShellAndControlTests
 
         Assert.True(baselineCaptured);
         var tabs = window.FindControl<TabControl>("MainTabs")!;
-        object catalogue = ((TabItem)tabs.Items[8]!).Content!;
+        object catalogue = GetTabPanel((TabItem)tabs.Items[8]!);
         Assert.True((bool)catalogue.GetType().GetProperty("IsPurged")!.GetValue(catalogue)!);
         CloseWithoutPrompt(window);
     }
@@ -405,6 +443,14 @@ public sealed class ShellAndControlTests
 
     private static object GetField(object target, string name) =>
         target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+
+    private static void SetField(object target, string name, object? value) =>
+        target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(target, value);
+
+    private static Control GetTabPanel(TabItem tab) =>
+        tab.Content is Grid { Children.Count: 2 } host
+            ? host.Children[0]
+            : Assert.IsAssignableFrom<Control>(tab.Content);
 
     private static void CloseWithoutPrompt(MainWindow window)
     {
