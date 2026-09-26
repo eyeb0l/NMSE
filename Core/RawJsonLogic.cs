@@ -68,6 +68,89 @@ internal static class RawJsonLogic
     }
 
     /// <summary>
+    /// Serializes a single node snippet for the isolated editor. Object properties are
+    /// emitted as <c>"key": value,</c>, array elements as <c>value,</c>, and root values
+    /// as <c>value</c>. The trailing comma is stripped again when the text is parsed.
+    /// </summary>
+    /// <param name="key">The node key, or <c>null</c> for the root value.</param>
+    /// <param name="value">The node value to serialize.</param>
+    /// <returns>The snippet text shown in the isolated editor.</returns>
+    internal static string SerializeNodeSnippet(string? key, object? value)
+    {
+        string valueText = SerializeValue(value);
+        // JsonParser formats with Environment.NewLine; the text editor stores lines
+        // LF-only, so normalise here to keep snippet comparisons stable.
+        if (valueText.Contains('\r'))
+            valueText = valueText.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        if (string.IsNullOrEmpty(key))
+            return valueText;
+        if (key.StartsWith('['))
+            return valueText + ",";
+        return JsonParser.QuoteString(key) + ": " + valueText + ",";
+    }
+
+    /// <summary>
+    /// Parses an isolated object-member snippet such as <c>"Key": { ... },</c>.
+    /// A single trailing comma is ignored.
+    /// </summary>
+    /// <param name="snippetText">The snippet text to parse.</param>
+    /// <returns>The property name and value from the snippet.</returns>
+    /// <exception cref="JsonException">
+    /// Thrown when the text is not exactly one JSON property.
+    /// </exception>
+    internal static (string Key, object? Value) ParseObjectMemberSnippet(string snippetText)
+    {
+        var parsed = JsonObject.Parse("{" + StripTrailingComma(snippetText) + "}");
+        var names = parsed.Names();
+        if (names.Count != 1)
+            throw new JsonException("Isolated edit must contain exactly one property");
+        string key = names[0];
+        return (key, parsed.Get(key));
+    }
+
+    /// <summary>
+    /// Parses an isolated array-element or root snippet (a single JSON value,
+    /// optionally followed by one trailing comma).
+    /// </summary>
+    /// <param name="snippetText">The snippet text to parse.</param>
+    /// <returns>The parsed value.</returns>
+    internal static object? ParseValueSnippet(string snippetText)
+    {
+        return JsonParser.ParseValue(StripTrailingComma(snippetText));
+    }
+
+    /// <summary>
+    /// Replaces the contents of the root object in place from an isolated root snippet,
+    /// preserving the root reference held by the rest of the application.
+    /// </summary>
+    /// <param name="root">The root object to update.</param>
+    /// <param name="snippetText">The snippet text to parse.</param>
+    internal static void ApplyRootSnippet(JsonObject root, string snippetText)
+    {
+        if (ParseValueSnippet(snippetText) is not JsonObject parsed)
+            throw new JsonException("Root snippet must be a JSON object");
+        root.Clear();
+        var names = parsed.Names();
+        for (int i = 0; i < names.Count; i++)
+        {
+            string name = names[i];
+            root.Set(name, parsed.Get(name));
+        }
+    }
+
+    /// <summary>
+    /// Trims whitespace from snippet text and removes a single trailing comma.
+    /// </summary>
+    /// <param name="text">The snippet text to normalize.</param>
+    /// <returns>The normalized snippet text.</returns>
+    private static string StripTrailingComma(string text)
+    {
+        string trimmed = text.Trim();
+        return trimmed.EndsWith(',') ? trimmed[..^1] : trimmed;
+    }
+
+    /// <summary>
     /// Formats a JSON value for display in an edit dialog.
     /// Unlike tree-display formatting, this does NOT wrap strings in quotation marks
     /// so users edit the raw value without needing to handle surrounding quotes.
@@ -182,7 +265,7 @@ internal static class RawJsonLogic
         // returns every line of oldMid as Removed followed by every line of newMid as Added
         // (no Context lines in between).  ComputeRawDiff prepends the common prefix as
         // Context *before* calling MyersDiff, so contextCount is never zero even in the
-        // fallback case — checking contextCount == 0 was always incorrect.
+        // fallback case - checking contextCount == 0 was always incorrect.
         // The reliable invariant is: a successful Myers run produces at most MaxDiffDistance
         // total edits; anything larger means the fallback fired.
         int contextCount = 0, removedCount = 0, addedCount = 0;
@@ -196,8 +279,8 @@ internal static class RawJsonLogic
         {
             // Too many differences to display line-by-line: return a single informational
             // header.  (The raw removedCount/addedCount figures come from the fallback
-            // array which equals the entire middle section of the file — not the true edit
-            // count — so we don't show them to avoid confusing the user.)
+            // array which equals the entire middle section of the file - not the true edit
+            // count - so we don't show them to avoid confusing the user.)
             return [new DiffLine(DiffLineType.Header,
                 $"Changes exceed the line-by-line display limit ({MaxDiffDistance} edits). Save the file and compare externally for a full diff.")];
         }
@@ -341,41 +424,170 @@ internal static class RawJsonLogic
     /// </summary>
     internal static string FindJsonContext(string[] lines, int lineIndex)
     {
-        if (lines.Length == 0 || lineIndex < 0) return "";
+        var segments = WalkJsonContext(lines, lineIndex, includeOwnKey: false);
+        if (segments.Count == 0) return "";
 
-        var contextParts = new List<string>();
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (i > 0) sb.Append(" > ");
+            sb.Append(segments[i].Key);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Returns the enclosing JSON key path for the given line as an ordered list of
+    /// key/line pairs, from the root to the innermost key. When the line itself is a
+    /// key line, that key is included as the final segment. Walks backward from the
+    /// line, so prefer the owner map overload for live caret tracking on large documents.
+    /// </summary>
+    /// <param name="lines">The formatted JSON document lines.</param>
+    /// <param name="lineIndex">The zero-based line index whose context is requested.</param>
+    /// <returns>The ordered key path with the source line index of each key.</returns>
+    internal static List<(string Key, int LineIndex)> FindJsonContextSegments(
+        IReadOnlyList<string> lines, int lineIndex)
+        => WalkJsonContext(lines, lineIndex, includeOwnKey: true);
+
+    /// <summary>
+    /// Returns the enclosing JSON key path for the given line using a precomputed
+    /// per-line owner map (innermost enclosing container line index, or -1 at the
+    /// root). This avoids a full backward scan, making live caret breadcrumbs cheap
+    /// on very large documents.
+    /// </summary>
+    /// <param name="lines">The formatted JSON document lines.</param>
+    /// <param name="lineIndex">The zero-based line index whose context is requested.</param>
+    /// <param name="contextOwnerLines">Per-line owner map parallel to <paramref name="lines"/>.</param>
+    /// <returns>The ordered key path with the source line index of each key.</returns>
+    internal static List<(string Key, int LineIndex)> FindJsonContextSegments(
+        IReadOnlyList<string> lines, int lineIndex, IReadOnlyList<int> contextOwnerLines)
+    {
+        var result = new List<(string Key, int LineIndex)>();
+        if (lines.Count == 0 || lineIndex < 0 || lineIndex >= lines.Count) return result;
+
+        // The caret line's own key (when present) is the innermost context.
+        string? ownKey = ExtractKeyName(lines[lineIndex].TrimStart());
+        if (ownKey != null)
+            result.Add((ownKey, lineIndex));
+
+        int owner = lineIndex < contextOwnerLines.Count ? contextOwnerLines[lineIndex] : -1;
+        int guard = lines.Count; // Safety limit against malformed owner maps.
+        while (owner >= 0 && owner < lines.Count && guard-- > 0)
+        {
+            string? key = ExtractKeyName(lines[owner].TrimStart());
+            if (key != null)
+                result.Add((key, owner));
+
+            int parent = contextOwnerLines[owner];
+            if (parent == owner) break;
+            owner = parent;
+        }
+
+        result.Reverse();
+        return result;
+    }
+
+    /// <summary>
+    /// Shared backward walk that collects the key hierarchy enclosing a line.
+    /// </summary>
+    /// <param name="lines">The formatted JSON document lines.</param>
+    /// <param name="lineIndex">The zero-based line index whose context is requested.</param>
+    /// <param name="includeOwnKey">When true, a key on the starting line is included.</param>
+    /// <returns>The ordered key path with the source line index of each key.</returns>
+    private static List<(string Key, int LineIndex)> WalkJsonContext(
+        IReadOnlyList<string> lines, int lineIndex, bool includeOwnKey)
+    {
+        var contextParts = new List<(string Key, int LineIndex)>();
+        if (lines.Count == 0 || lineIndex < 0) return contextParts;
+
+        int start = Math.Min(lineIndex, lines.Count - 1);
         int depth = 0;
 
-        // Walk backward from lineIndex to find enclosing key names
-        for (int i = Math.Min(lineIndex, lines.Length - 1); i >= 0; i--)
+        // Walk backward from the given line to find enclosing key names.
+        for (int i = start; i >= 0; i--)
         {
-            string trimmed = lines[i].TrimStart();
+            string rawLine = lines[i];
+            string trimmed = rawLine.TrimStart();
 
-            // Track nesting depth
-            for (int c = trimmed.Length - 1; c >= 0; c--)
-            {
-                char ch = trimmed[c];
-                if (ch == '}' || ch == ']') depth++;
-                else if (ch == '{' || ch == '[') depth--;
-            }
+            // Track nesting depth, ignoring braces inside string values.
+            depth += CountClosingMinusOpening(trimmed);
 
-            // If we've moved up a nesting level, look for the key name
+            // If we've moved up a nesting level, look for the key name.
             if (depth < 0)
             {
                 string? keyName = ExtractKeyName(trimmed);
+                int keyLine = i;
                 if (keyName == null && i > 0)
                 {
-                    // The key might be on the previous line (e.g., "key": \n {)
+                    // The key might be on the previous line (e.g., "key": \n {).
                     keyName = ExtractKeyName(lines[i - 1].TrimStart());
+                    keyLine = i - 1;
+                    // The previous line's opening token has been attributed to this
+                    // level, so skip it to avoid adding the same key twice.
+                    if (keyName != null) i--;
                 }
+
                 if (keyName != null)
-                    contextParts.Add(keyName);
-                depth = 0; // Reset for next level up
+                {
+                    contextParts.Add((keyName, keyLine));
+                    depth = 0; // Reset for the next level up.
+                }
+                else if (rawLine.Length > 0 && (rawLine[0] == '{' || rawLine[0] == '['))
+                {
+                    // Reached an opening token at column zero: the document root.
+                    break;
+                }
+                else
+                {
+                    depth = 0; // Anonymous container (array element), keep going.
+                }
+            }
+            else if (i == start && includeOwnKey)
+            {
+                // The starting line has no unmatched opening token of its own,
+                // so its own key (when present) is the innermost context.
+                string? keyName = ExtractKeyName(trimmed);
+                if (keyName != null)
+                    contextParts.Add((keyName, i));
             }
         }
 
         contextParts.Reverse();
-        return contextParts.Count > 0 ? string.Join(" > ", contextParts) : "";
+        return contextParts;
+    }
+
+    /// <summary>
+    /// Counts closing braces/brackets minus opening braces/brackets on a line,
+    /// ignoring characters inside JSON strings.
+    /// </summary>
+    /// <param name="line">The trimmed line to inspect.</param>
+    /// <returns>The net nesting delta for the line.</returns>
+    private static int CountClosingMinusOpening(string line)
+    {
+        int delta = 0;
+        bool inString = false;
+        for (int c = 0; c < line.Length; c++)
+        {
+            char ch = line[c];
+            if (inString)
+            {
+                if (ch == '\\') c++;
+                else if (ch == '"') inString = false;
+            }
+            else if (ch == '"')
+            {
+                inString = true;
+            }
+            else if (ch == '}' || ch == ']')
+            {
+                delta++;
+            }
+            else if (ch == '{' || ch == '[')
+            {
+                delta--;
+            }
+        }
+        return delta;
     }
 
     /// <summary>
@@ -406,7 +618,7 @@ internal static class RawJsonLogic
     /// Capping this bounds both the V-array allocation and the history snapshots to
     /// O(MaxDiffDistance) rather than O(N+M). Memory cost: each of the D+1 history snapshots
     /// is (2*MaxDiffDistance+3) ints (~16 KB at 2000); total ~= 32 MB worst case. Time cost is
-    /// O(N + D²) where N ~= file length in lines — at D=2000 this is well under a second for
+    /// O(N + D^2) where N ~= file length in lines - at D=2000 this is well under a second for
     /// typical NMS saves (~500 K lines). Files whose diff exceeds this limit receive a single
     /// informational header line instead of an unusable all-removed-then-all-added wall.
     /// 2000 comfortably covers all practical bulk inventory operations (RefillAllStacks on

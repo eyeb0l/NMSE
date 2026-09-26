@@ -167,7 +167,7 @@ public static class ToolManager
     /// Attempts to validate an installed magick.exe by listing supported formats
     /// and verifying DDS read/write support is present.
     /// Some releases (e.g. 7.1.2-24 compiled with VS2026) ship without DDS support.
-    /// Also tests actual BC7 DDS read/write — the game now uses BC7-compressed DDS
+    /// Also tests actual BC7 DDS read/write - the game now uses BC7-compressed DDS
     /// textures and some ImageMagick builds claim DDS support via -list format but
     /// hang on real BC7 conversions.
     /// </summary>

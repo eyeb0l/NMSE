@@ -32,6 +32,7 @@ public sealed class AvaloniaResourceCatalog : IDisposable
             progress?.Report(new ResourceLoadProgress(5, "Loading item database…"));
             Items.LoadItemsFromJsonDirectory(json);
             StarshipDatabase.LoadFromDatabase(Items);
+            SpacePoiTableDatabase.LoadFromFile(Path.Combine(json, "Space POI.json"));
             TechPacks.RegisterGeneratedPacks();
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -103,6 +104,7 @@ public sealed class AvaloniaResourceCatalog : IDisposable
             FrigateTraitDatabase.RevertLocalisation();
             SettlementDatabase.RevertLocalisation();
             WikiGuideDatabase.RevertLocalisation();
+            SpacePoiTableDatabase.RevertLocalisation();
         }
         else
         {
@@ -115,6 +117,7 @@ public sealed class AvaloniaResourceCatalog : IDisposable
             SettlementDatabase.ApplyLocalisation(Localisation);
             WikiGuideDatabase.ApplyLocalisation(Localisation);
             CompanionAccessoryDatabase.ApplyLocalisation(Localisation);
+            SpacePoiTableDatabase.ApplyLocalisation(Localisation);
         }
         return uiLoaded && dataLoaded;
     }

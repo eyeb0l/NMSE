@@ -132,7 +132,7 @@ public sealed record SaveSession(
             return;
 
         accountData.NameMapper ??= JsonParser.GetDefaultMapper();
-        bool writeMeta = Platform == SaveFileManager.Platform.PS4;
+        bool writeMeta = Platform is SaveFileManager.Platform.PS4 or SaveFileManager.Platform.Switch;
         SaveFileManager.SaveToFile(
             AccountPath,
             accountData,
@@ -147,6 +147,8 @@ public sealed record SaveSession(
         string accountData = Path.Combine(directory, "accountdata.hg");
         if (File.Exists(accountData))
             return accountData;
+        if (SaveFileManager.DetectPlatform(directory) == SaveFileManager.Platform.Switch)
+            return null;
         string playStationAccount = Path.Combine(directory, "savedata00.hg");
         return File.Exists(playStationAccount) ? playStationAccount : null;
     }

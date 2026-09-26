@@ -1,4 +1,5 @@
 using NMSE.Data;
+using NMSE.Core;
 using NMSE.Models;
 
 namespace NMSE.UI.Avalonia.Panels.BasesStorage;
@@ -9,9 +10,21 @@ internal sealed class BaseListItem(string displayName, JsonObject data, int data
     public JsonObject Data { get; } = data;
     public int DataIndex { get; set; } = dataIndex;
     public bool IsFreighterBase { get; } = isFreighterBase;
-    public override string ToString() => IsFreighterBase
-        ? $"[{DataIndex}] [F] {DisplayName}"
-        : $"[{DataIndex}] {DisplayName}";
+    public SpaceStationLogic.BaseKind Kind => SpaceStationLogic.GetBaseKind(Data);
+    public bool IsShipNamed => IsFreighterBase || Kind == SpaceStationLogic.BaseKind.Corvette;
+    public bool IsPlanetary => Kind == SpaceStationLogic.BaseKind.Home;
+    public override string ToString()
+    {
+        string marker = Kind switch
+        {
+            SpaceStationLogic.BaseKind.Freighter => "[F] ",
+            SpaceStationLogic.BaseKind.SpaceStation => "[S] ",
+            SpaceStationLogic.BaseKind.Corvette => "[C] ",
+            SpaceStationLogic.BaseKind.SpaceBase => "[A] ",
+            _ => string.Empty
+        };
+        return $"[{DataIndex}] {marker}{DisplayName}";
+    }
 }
 
 internal sealed class BaseObjectItem(string objectId, JsonObject data, int index)

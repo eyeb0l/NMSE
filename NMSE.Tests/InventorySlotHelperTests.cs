@@ -33,9 +33,9 @@ public class InventorySlotHelperTests
         return slot;
     }
 
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
     // UpdateSlotIndex
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
 
     [Fact]
     public void UpdateSlotIndex_UpdatesExistingIndex()
@@ -70,9 +70,9 @@ public class InventorySlotHelperTests
         Assert.Equal(100, slot.GetInt("MaxAmount"));
     }
 
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
     // SwapSlotIndices
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
 
     [Fact]
     public void SwapSlotIndices_SwapsPositions()
@@ -133,9 +133,9 @@ public class InventorySlotHelperTests
         Assert.Equal(6, slotB.GetObject("Index")!.GetInt("Y"));
     }
 
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
     // DuplicateSlot
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
 
     [Fact]
     public void DuplicateSlot_CreatesNewSlotAtTargetPosition()
@@ -203,9 +203,9 @@ public class InventorySlotHelperTests
         Assert.Equal(100, source.GetInt("Amount"));
     }
 
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
     // Edge cases
-    // ──────────────────────────────────────────────────────────
+    // ----------------------------------------------------------
 
     [Fact]
     public void UpdateSlotIndex_ZeroCoordinates()

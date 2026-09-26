@@ -261,7 +261,7 @@ internal static class InventoryBulkActions
 
     /// <summary>
     /// Recharges all chargeable technology in a single inventory to max amount.
-    /// Damaged items (Amount &lt; 0) are skipped — repair them first.
+    /// Damaged items (Amount &lt; 0) are skipped - repair them first.
     /// Mirrors OnRechargeAllTech from InventoryGridPanel, operating on raw JSON.
     /// </summary>
     private static int RechargeInventoryTech(JsonObject inventory, GameItemDatabase database)
@@ -304,7 +304,7 @@ internal static class InventoryBulkActions
 
     /// <summary>
     /// Refills all cargo item stacks in a single inventory to their max amount.
-    /// Technology-type slots are skipped — they are recharged by
+    /// Technology-type slots are skipped - they are recharged by
     /// <see cref="RechargeInventoryTech"/> instead.
     /// Mirrors OnRefillAllStacks from InventoryGridPanel, operating on raw JSON.
     /// </summary>

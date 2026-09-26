@@ -209,7 +209,7 @@ public class DatabaseLocalisationTests
     {
         // Words should try all group keys when TextLocStr doesn't produce a real translation.
         // This mirrors the case where "TRA_ACCESS" returns "access" (English) but "BUI_ACCESS"
-        // returns "アクセス" (Japanese).
+        // returns the Japanese localisation of "access".
         string tmpDir = Path.Combine(Path.GetTempPath(), "nmse_loc_test_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tmpDir);
         try

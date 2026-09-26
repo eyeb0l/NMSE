@@ -12,9 +12,9 @@ public class ExtractorConfigTests
             f => f.Contains("nms_reality_gcproducttable.mbin"));
         Assert.Contains(ExtractorConfig.MbinFilters,
             f => f.Contains("robotdatatable.mbin"));
-        // Locale MBIN filters use wildcards to capture all languages (e.g. nms_loc1_*.mbin)
-        Assert.Contains(ExtractorConfig.MbinFilters,
-            f => f.Contains("nms_loc1_"));
+        // Locale MBIN filters use a wildcard to capture every language table,
+        // including newer tables added after update 3 (e.g. Cosmos).
+        Assert.Contains("*LANGUAGE/nms_*.mbin", ExtractorConfig.MbinFilters);
         Assert.Contains(ExtractorConfig.MbinFilters,
             f => f.Contains("nms_dialog_gcalienspeechtable.mbin"));
     }
@@ -164,7 +164,7 @@ public class ExtractorConfigTests
         string[] filters = ExtractorConfig.GetFiltersForPak("NMSARC.MetadataEtc.pak");
         Assert.Equal(ExtractorConfig.MbinFilters, filters);
         Assert.Contains(filters, f => f.Contains("nms_reality_gcproducttable.mbin"));
-        Assert.Contains(filters, f => f.Contains("LANGUAGE/nms_loc1_"));
+        Assert.Contains("*LANGUAGE/nms_*.mbin", filters);
         Assert.DoesNotContain(filters, f => f.Contains("*.DDS"));
     }
 
@@ -231,5 +231,32 @@ public class ExtractorConfigTests
         Assert.Equal(8, ExtractorConfig.LocaleFileStems.Length);
         Assert.Contains("nms_loc1", ExtractorConfig.LocaleFileStems);
         Assert.Contains("nms_update3", ExtractorConfig.LocaleFileStems);
+    }
+
+    [Fact]
+    public void GetLocaleMxmlFiles_FromDirectory_EnumeratesExtractedTables()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "nmse-locale-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "nms_loc1_english.MXML"), "");
+            File.WriteAllText(Path.Combine(tempDir, "nms_update3_english.MXML"), "");
+            File.WriteAllText(Path.Combine(tempDir, "nms_update4_english.MXML"), "");
+            File.WriteAllText(Path.Combine(tempDir, "nms_loc1_japanese.MXML"), "");
+            File.WriteAllText(Path.Combine(tempDir, "unrelated.MXML"), "");
+
+            string[] files = ExtractorConfig.GetLocaleMxmlFiles(tempDir, "English");
+
+            Assert.Equal(3, files.Length);
+            Assert.Contains("nms_loc1_english.MXML", files);
+            Assert.Contains("nms_update3_english.MXML", files);
+            Assert.Contains("nms_update4_english.MXML", files);
+            Assert.DoesNotContain("nms_loc1_japanese.MXML", files);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
     }
 }

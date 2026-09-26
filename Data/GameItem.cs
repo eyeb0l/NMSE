@@ -24,6 +24,21 @@ public class GameItem
     public string? DescriptionLocStr { get; set; }
     /// <summary>Item category (e.g. "Maintenance", "Emote").</summary>
     public string Category { get; set; } = "";
+    /// <summary>
+    /// Raw product category from the JSON database (e.g. "BuildingPart",
+    /// "Consumable", "Curiosity"). Empty for technology/substance items.
+    /// </summary>
+    public string ProductCategory { get; set; } = "";
+    /// <summary>
+    /// Raw substance category from the JSON database (e.g. "Fuel", "Metal",
+    /// "Earth"). Empty for products/technology.
+    /// </summary>
+    public string SubstanceCategory { get; set; } = "";
+    /// <summary>
+    /// Raw wiki category from the JSON database (e.g. "Construction",
+    /// "Crafting"). Used for catalogue/wiki grouping only.
+    /// </summary>
+    public string WikiCategory { get; set; } = "";
     /// <summary>Icon filename used to display this item (e.g. "FUEL1.png").</summary>
     public string Icon { get; set; } = "";
     /// <summary>Symbol identifier for the item's element symbol.</summary>
@@ -39,7 +54,7 @@ public class GameItem
     /// Charge capacity for technology items. Populated from ChargeAmount
     /// (tech-parsed items) or ChargeValue (product-parsed items) in the JSON database.
     /// For ALL technology items (chargeable and non-chargeable alike) this is the
-    /// MXML ChargeAmount value — the game uses it as MaxAmount in save slots.
+    /// MXML ChargeAmount value - the game uses it as MaxAmount in save slots.
     /// For procedural items (UP_*) this value is inherited from the Template
     /// entry in the main GcTechnologyTable.
     /// </summary>
@@ -95,21 +110,23 @@ public class GameItem
     /// Reward table ID triggered when this SpecialShop product is purchased
     /// (e.g. "RS_S13_SHIP", "RS_S8_EGG"). Null/empty for items with no special
     /// purchase reward. Used to determine whether the item should be added to
-    /// KnownTech when redeemed — ship, egg, frigate, firework, and weapon rewards
+    /// KnownTech when redeemed - ship, egg, frigate, firework, and weapon rewards
     /// are non-technology and should NOT appear in KnownTech.
     /// Populated from the MBIN field GiveRewardOnSpecialPurchase.
     /// </summary>
     public string GiveRewardOnSpecialPurchase { get; set; } = "";
     /// <summary>
-    /// Whether this base building product can be picked up after placement.
-    /// From BaseBuildingData in the game's basebuildingobjectstable.
-    /// (Filtering for inventory add dialogs).
+    /// Whether this base building product can be retrieved back into the inventory
+    /// after placement. From BaseBuildingData in the game's basebuildingobjectstable.
+    /// Informational only: this describes retrieving a placed structure and does not
+    /// restrict which inventories the item can be stored in.
     /// </summary>
     public bool CanPickUp { get; set; }
     /// <summary>
     /// Whether this base building is a temporary structure.
-    /// Temporary buildings are always considered pickupable.
+    /// Temporary structures are always retrievable after placement.
     /// From BaseBuildingData in the game's basebuildingobjectstable.
+    /// Informational only (see <see cref="CanPickUp"/>).
     /// </summary>
     public bool IsTemporary { get; set; }
     /// <summary>

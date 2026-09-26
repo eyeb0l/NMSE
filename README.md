@@ -19,7 +19,7 @@ It boasts the most complete set of editable features among editors and supports 
 
 > *The user guide may lag behind builds.*
 
-> **Latest Supported Game Version:** 6.45.1 _**The Swarm**_
+> **Latest Supported Game Version:** 7.03 _**Cosmos**_
 
 </div>
 
@@ -39,13 +39,17 @@ It boasts the most complete set of editable features among editors and supports 
 - Full milestone and journey milestone editing
 - Edit multi-tool inventory, type, class, and seed
 - Edit known items (product, tech, recipes, etc.)
+- Catalogue completion tools for knowledge pages, wonders, fossils and raw materials
 - Outfit export/import
+- Titles, guide tab and experimental multiplayer (co-op) keys
 
 ### 🏗️ Bases, Settlements
 - Edit base inventories and storage chests
 - Settlement stats, production, and perks
 - Edit corvette cache and salvage containers
 - Edit fishing inventories and cooking ingredients
+- Systems: space station stats, Cosmos mission states and Space POI discovery editing
+- Base object editor (advanced)
 
 ### 🦎 Companion Pets
 - Companion editing
@@ -59,10 +63,13 @@ It boasts the most complete set of editable features among editors and supports 
 - Edit starships with full inventory access
 - Change ship type, class, seed, and name
 - Corvette editing, part reverse lookup, export and import
+- Corvette build optimiser
+- Starship customisation (model, textures, colours) and ship archive
 - Manage exocraft inventories and tech
 - Full freighter inventory editing and room listing
 - Manage frigate fleet stats and traits
 - Squadron pilot and ship editing
+- Multi-tool archive (move/import)
 
 ### 🗃️ Inventories & More
 - Visual inventory grid editor for every slot type
@@ -70,6 +77,9 @@ It boasts the most complete set of editable features among editors and supports 
 - Auto-stack items from exosuit/starship to freighter/chests/starship
 - Sort inventory
 - Import/export practically everything (cross-editor compatible)
+- Database Search panel (lookup without a loaded save)
+- Backup picker and restore
+- Built-in update checker
 - ByteBeat music library editor
 - Recipe browser with full crafting trees
 - Raw JSON tree viewer for advanced editing
@@ -133,7 +143,7 @@ You can view the NMSE development roadmap **[here][roadmap]** for upcoming, plan
 2. Extract the zip to a folder of your choice
 3. Run `NMSE.exe`
 4. Select your save slot and click <kbd>Load</kbd>
-5. If you save location is not auto-detected; use the <kbd>Browse...</kbd> button or <kbd>File > Open Save Directory</kbd> to locate your save directory
+5. If your save location is not auto-detected, use the <kbd>Browse...</kbd> button or <kbd>File > Open Save Directory</kbd> to locate your save directory
 
 > 💡 **Tip:** _NMSE auto-detects your save file location for Steam, GOG, and Xbox Game Pass_
 
@@ -143,11 +153,11 @@ Wine based AppImage and DMG are available from the release page.<br>
 See the cross-platform guides for running NMSE via Wine:
 
 - 🐧 Linux AppImage with WINE included **(RECOMMENDED)**
-- 🥃 [Gcenx Wine Builds on macOS][guide-gcenx-wine]
-- ✖️[CrossOver on macOS][guide-crossover]
-- Advanced usage under Linux: 🍷 [Wine on Linux][guide-wine] or🧴 [Bottles on Linux][guide-bottles]
+- 🥃 [Gcenx Wine Builds on macOS][guide-gcenx-wine] (free, recommended for macOS)
+- 🍎 [CrossOver on macOS][guide-crossover] (paid, supported)
+- Advanced usage under Linux: 🍷 [Wine on Linux][guide-wine] or 🧴 [Bottles on Linux][guide-bottles]
 
-A native cross-platform version [is planned][cross-platfom-plan].
+NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review. Release assets are named `NMSE-<version>-Release.zip`, `NMSE-<version>-Release-x64.AppImage` and `NMSE-<version>-Release-x64.dmg`.
 
 ---
 
@@ -265,7 +275,9 @@ Made with ❤️ by [**vectorcmdr**][github-owner]
 [badge-release]: https://img.shields.io/github/v/release/vectorcmdr/NMSE?include_prereleases&label=⇓%20release&color=green
 [badge-stars]: https://img.shields.io/github/stars/vectorcmdr/NMSE?style=flat&color=yellow&label=★%20stars
 [badge-platform]: https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white
+<!-- Unused for now; may be re-enabled when the badge is refreshed for the current game version.
 [badge-gamever]: https://img.shields.io/badge/game%20version-6.34-7644e3?logo=windows&logoColor=white
+-->
 [badge-sponsor]: https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white
 [badge-kofi]: https://img.shields.io/badge/Support-Ko--fi-29abe0?logo=ko-fi&logoColor=white
 [badge-github]: https://img.shields.io/badge/GitHub-vectorcmdr-181717?logo=github&logoColor=white
@@ -286,7 +298,6 @@ Made with ❤️ by [**vectorcmdr**][github-owner]
 [contributing]: .github/CONTRIBUTING.md
 [code-of-conduct]: .github/CODE_OF_CONDUCT.md
 [support]: .github/SUPPORT.md
-[cross-platfom-plan]: docs/dev/cross-platform-workplan.md
 [roadmap]: https://github.com/vectorcmdr/NMSE/projects?query=is%3Aopen
 
 <!-- Cross-Platform Guides -->

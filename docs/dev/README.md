@@ -9,6 +9,7 @@ Native macOS migration references:
 
 - [Abandoned Avalonia branch audit](macos-port-audit.md)
 - [Native macOS parity matrix](macos-port-parity.md)
+- [Cosmos 7.03 integration](macos-cosmos-integration.md)
 
 It supports saves from every platform the game ships on (Steam, GOG, Xbox Game Pass,
 PlayStation 4, and Nintendo Switch) and handles each platform's unique file layout,
@@ -36,7 +37,8 @@ lives in the Core and Data layers so the UI layer stays thin.
 | **NMSE.Site** (`NMSE.Site/`) | Static web companion site (HTML/JS/CSS) for GitHub Pages |
 
 Build output is redirected to `Build/bin/` and `Build/obj/` via `Directory.Build.props`.
-The solution file is `NMSE.slnx` (modern XML format).
+The solution file is `NMSE.slnx` (modern XML format). `NMSE.Site` is a static companion
+site and is not part of the solution.
 
 ### Build System
 
@@ -55,10 +57,15 @@ The application targets generic .NET 10.0 and publishes managed, self-contained 
 Logic classes that encapsulate game rules, data transformation, and domain operations.
 All classes are `internal static` with no mutable state.
 
-- AccountLogic, BaseLogic, CompanionLogic, DiscoveryLogic, ExosuitLogic
-- FreighterLogic, FrigateLogic, MainStatsLogic, MilestoneLogic, MultitoolLogic
-- RawJsonLogic, SettlementLogic, SquadronLogic, StarshipLogic, ExocraftLogic
-- ExportConfig, FileNameHelper, InventoryImportHelper, MxmlRewardEditor, SeedHelper, StatHelper
+- AccountLogic, BaseLogic, CatalogueLogic, CatalogueCompletionLogic (partials), CompanionLogic
+- DatabaseSearchLogic, ExocraftLogic, ExosuitLogic, FreighterLogic, FrigateLogic
+- InventoryBulkActions, KnowledgeCatalogue, MainStatsLogic, MilestoneLogic, MultitoolLogic
+- OutfitLogic, RawJsonLogic, SaveContext, SettlementLogic, SpaceStationLogic
+- SpacePoiSlotInference, SpacePoiSlotTokens, SpacePoiLayoutsFile, DiscoveriesFile
+- SquadronLogic, StarshipLogic, ThemeManager, ThemeColors, UpdateService, AppJsonContext
+- ExportConfig; `Core/Utilities/`: CoordinateHelper, InventoryImportHelper, InventorySlotHelper
+  MathHelper, NmsColourPalette, NumericParseHelper, ProceduralSeedHelper, RawNumberGuard
+  SeedHelper, StatHelper, StringHelper
 
 ### [Data Layer](data-layer.md)
 
@@ -111,9 +118,10 @@ and updates all panels via their `ApplyUiLocalisation()` methods.
 
 The data extraction pipeline that converts NMS game archives into editor databases.
 
-- Program (12-stage pipeline), ExtractorConfig, Categorizer, ImageExtractor
-- JsonWriter, LocalisationBuilder, MbinConverter, MxmlParser, PakExtractor
-- Parsers, ProductLookup, TeeTextWriter, SteamLocator, ToolManager
+- Program (multi-stage pipeline), `Config/ExtractorConfig`
+- `Data/`: CataloguePackBuilder, Categorizer, CuratedItemNames, ImageExtractor, JsonWriter
+  LocalisationBuilder, MbinConverter, MxmlParser, PakExtractor, Parsers, ProductLookup, TeeTextWriter
+- `Util/`: SteamLocator, ToolManager
 
 ### Cross-platform packaging
 

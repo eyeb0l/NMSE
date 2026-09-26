@@ -309,8 +309,8 @@ public class PlatformIOTests
     }
 
     [Theory]
-    [InlineData(0, "savedata01.hg")]
-    [InlineData(1, "savedata03.hg")]
+    [InlineData(0, "savedata03.hg")]
+    [InlineData(1, "savedata05.hg")]
     public void SaveSlotManager_GetSlotFiles_Switch_ReturnsManualSave(int slotIndex, string expectedDataName)
     {
         var files = SaveSlotManager.GetSlotFiles("/saves/switch", slotIndex, SaveFileManager.Platform.Switch);
@@ -321,8 +321,8 @@ public class PlatformIOTests
     }
 
     [Theory]
-    [InlineData(0, "savedata00.hg", "savedata01.hg")]
-    [InlineData(1, "savedata02.hg", "savedata03.hg")]
+    [InlineData(0, "savedata02.hg", "savedata03.hg")]
+    [InlineData(1, "savedata04.hg", "savedata05.hg")]
     public void SaveSlotManager_GetAllSlotFiles_Switch_ReturnsBothFiles(
         int slotIndex, string expectedAuto, string expectedManual)
     {
@@ -785,6 +785,27 @@ public class PlatformIOTests
         finally { Directory.Delete(tmpDir, true); }
     }
 
+    [Fact]
+    public void DetectPlatform_Switch_FromManifestaccountdata()
+    {
+        // Real Switch saves (e.g. JKSV exports) carry manifestaccountdata.hg alongside
+        // the manifest*.hg companion files.  Without this, a Switch directory is
+        // misdetected as PS4 because it also contains savedata*.hg files.
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_switch_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(tmpDir, "manifestaccountdata.hg"), new byte[] { 0 });
+            File.WriteAllBytes(Path.Combine(tmpDir, "manifest00.hg"), new byte[] { 0 });
+            File.WriteAllBytes(Path.Combine(tmpDir, "savedata00.hg"), new byte[] { 0 });
+            File.WriteAllBytes(Path.Combine(tmpDir, "savedata02.hg"), new byte[] { 0 });
+
+            var platform = SaveFileManager.DetectPlatform(tmpDir);
+            Assert.Equal(SaveFileManager.Platform.Switch, platform);
+        }
+        finally { Directory.Delete(tmpDir, true); }
+    }
+
     // --- SaveToFile with writeMeta flag ---
 
     [Fact]
@@ -1052,6 +1073,98 @@ public class PlatformIOTests
             // Verify "meta" identifier at offset 168 (8 + 128 + 32)
             string metaId = Encoding.Unicode.GetString(bytes, 168, 8);
             Assert.Equal("meta", metaId);
+        }
+        finally { Directory.Delete(tmpDir, true); }
+    }
+
+    [Fact]
+    public void SaveXboxSave_ReturnsUpdatedSlotInfo_WithNewBlobPaths()
+    {
+        // Verify that SaveXboxSave returns slot info pointing at the newly written
+        // GUID-named blobs.  The UI caches the blob path for the file combo timestamp,
+        // so a stale path would read a deleted file and show the 1601 epoch.
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_xbox_save_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            Guid blobGuid = Guid.NewGuid();
+            string blobDir = Path.Combine(tmpDir, blobGuid.ToString("N").ToUpperInvariant());
+            Directory.CreateDirectory(blobDir);
+
+            // Old data/meta blobs
+            Guid oldDataGuid = Guid.NewGuid();
+            Guid oldMetaGuid = Guid.NewGuid();
+            string oldDataPath = Path.Combine(blobDir, oldDataGuid.ToString("N").ToUpperInvariant());
+            string oldMetaPath = Path.Combine(blobDir, oldMetaGuid.ToString("N").ToUpperInvariant());
+            File.WriteAllBytes(oldDataPath, new byte[] { 0x01 });
+            File.WriteAllBytes(oldMetaPath, new byte[] { 0x02 });
+
+            // 328-byte container.1 pointing at the old blobs
+            byte[] containerBytes = new byte[328];
+            using (var ms = new MemoryStream(containerBytes))
+            using (var w = new BinaryWriter(ms))
+            {
+                w.Write(4);
+                w.Write(2);
+                w.Write(Encoding.Unicode.GetBytes("data"));
+                ms.Position = 8 + 128;
+                w.Write(new byte[16]);
+                w.Write(oldDataGuid.ToByteArray());
+                w.Write(Encoding.Unicode.GetBytes("meta"));
+                ms.Position = 8 + 160 + 128;
+                w.Write(new byte[16]);
+                w.Write(oldMetaGuid.ToByteArray());
+            }
+            File.WriteAllBytes(Path.Combine(blobDir, "container.1"), containerBytes);
+
+            // Minimal containers.index with a single Slot1Auto entry.
+            // The header strings are non-empty so the rewritten file exceeds the
+            // parser's 200-byte minimum (as real containers.index files do).
+            using var indexMs = new MemoryStream();
+            using var indexW = new BinaryWriter(indexMs);
+            indexW.Write(14);
+            indexW.Write(1L);
+            string processId = "HelloGames.NoMansSky_test";
+            indexW.Write(processId.Length);
+            indexW.Write(Encoding.Unicode.GetBytes(processId));
+            indexW.Write(0L);         // lastModifiedTime
+            indexW.Write(0);          // syncState
+            string accountGuid = "000900000150C65A29070100B936489A";
+            indexW.Write(accountGuid.Length);
+            indexW.Write(Encoding.Unicode.GetBytes(accountGuid));
+            indexW.Write(268435456L); // footer
+            string id = "Slot1Auto";
+            indexW.Write(id.Length);
+            indexW.Write(Encoding.Unicode.GetBytes(id));
+            indexW.Write(0);       // identifier2
+            indexW.Write(0);       // syncTime
+            indexW.Write((byte)1); // blob extension
+            indexW.Write(0);       // sync state
+            indexW.Write(blobGuid.ToByteArray());
+            indexW.Write(0L);      // last modified
+            indexW.Write(0L);      // empty
+            indexW.Write(0L);      // total size
+            while (indexMs.Position < 200) indexW.Write((byte)0);
+
+            string indexPath = Path.Combine(tmpDir, "containers.index");
+            File.WriteAllBytes(indexPath, indexMs.ToArray());
+
+            var before = ContainersIndexManager.ParseContainersIndex(indexPath);
+            Assert.Equal(oldDataPath, before["Slot1Auto"].DataFilePath);
+
+            var data = JsonObject.Parse("{\"CommonStateData\":{\"SaveName\":\"Test\"}}");
+            var updated = SaveFileManager.SaveXboxSave(indexPath, "Slot1Auto", data);
+
+            // New blob file must exist, differ from the old path, and the old file must be gone
+            Assert.NotNull(updated.DataFilePath);
+            Assert.True(File.Exists(updated.DataFilePath), "Updated data blob should exist");
+            Assert.NotEqual(oldDataPath, updated.DataFilePath);
+            Assert.False(File.Exists(oldDataPath), "Old data blob should have been removed");
+
+            // A re-parse (what re-selecting the directory does) must resolve the same path
+            var after = ContainersIndexManager.ParseContainersIndex(indexPath);
+            Assert.Equal(updated.DataFilePath, after["Slot1Auto"].DataFilePath);
+            Assert.Equal(updated.MetaFilePath, after["Slot1Auto"].MetaFilePath);
         }
         finally { Directory.Delete(tmpDir, true); }
     }
@@ -1584,6 +1697,145 @@ public class PlatformIOTests
     }
 
     [Fact]
+    public void SwitchMeta_SaveMeta_PreservesExistingBaseVersion()
+    {
+        // Regression guard: the manifest base version (offset 20) is the game's
+        // software version at save time (e.g. 4215) and must NOT be overwritten with
+        // the save-format "Version" field from the JSON (e.g. 4727).  Writing the
+        // higher JSON Version makes the game report "Cross-Save Version Incompatible".
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            string savePath = Path.Combine(tmpDir, "savedata01.hg");
+            File.WriteAllText(savePath, "dummy");
+
+            // Create a pre-existing game-written manifest carrying a lower base version.
+            string metaPath = Path.Combine(tmpDir, "manifest01.hg");
+            byte[] existing = new byte[MetaFileWriter.SWITCH_META_LENGTH_WORLDS_II];
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_HEADER_SWITCH), 0, existing, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_FORMAT_4), 0, existing, 4, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(4215u), 0, existing, 20, 4);
+            File.WriteAllBytes(metaPath, existing);
+
+            var metaInfo = new SaveMetaInfo
+            {
+                BaseVersion = 4727, // JSON "Version" field - higher than the game build
+                GameMode = 2,
+            };
+
+            MetaFileWriter.WriteSwitchMeta(savePath, 4096, metaInfo, 1);
+
+            byte[] result = File.ReadAllBytes(metaPath);
+            int baseVersion = BitConverter.ToInt32(result, 20);
+            Assert.Equal(4215, baseVersion);
+
+            // Format must remain at the game-written value.
+            uint format = BitConverter.ToUInt32(result, 4);
+            Assert.Equal(MetaFileWriter.META_FORMAT_4, format);
+
+            // Decompressed size must still be updated.
+            uint decompressedSize = BitConverter.ToUInt32(result, 8);
+            Assert.Equal(4096u, decompressedSize);
+        }
+        finally
+        {
+            Directory.Delete(tmpDir, true);
+        }
+    }
+
+    [Fact]
+    public void PlaystationStreamingMeta_SaveManifest_PreservesExistingBaseVersion()
+    {
+        // Regression guard for the PS4 HTOS manifest (same format as Switch).
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            string savePath = Path.Combine(tmpDir, "savedata02.hg");
+            File.WriteAllText(savePath, "dummy");
+
+            string metaPath = Path.Combine(tmpDir, "manifest02.hg");
+            byte[] existing = new byte[MetaFileWriter.PS4_META_LENGTH_WORLDS_II];
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_HEADER_PS4), 0, existing, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_FORMAT_4), 0, existing, 4, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(4215u), 0, existing, 20, 4);
+            File.WriteAllBytes(metaPath, existing);
+
+            var metaInfo = new SaveMetaInfo
+            {
+                BaseVersion = 4727,
+                GameMode = 1,
+            };
+
+            MetaFileWriter.WritePlaystationStreamingMeta(savePath, 8192, metaInfo, 2);
+
+            byte[] result = File.ReadAllBytes(metaPath);
+            int baseVersion = BitConverter.ToInt32(result, 20);
+            Assert.Equal(4215, baseVersion);
+
+            uint format = BitConverter.ToUInt32(result, 4);
+            Assert.Equal(MetaFileWriter.META_FORMAT_4, format);
+
+            uint decompressedSize = BitConverter.ToUInt32(result, 8);
+            Assert.Equal(8192u, decompressedSize);
+        }
+        finally
+        {
+            Directory.Delete(tmpDir, true);
+        }
+    }
+
+    [Fact]
+    public void SwitchMeta_SaveMeta_NewSlot_UsesSiblingManifestBaseVersion()
+    {
+        // Writing into a new slot (no manifest of its own yet) must take the base
+        // version from a sibling game-save manifest written by the game, otherwise
+        // the JSON Version (4727) is written and the game reports
+        // "Cross-Save Version Incompatible".
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            string savePath = Path.Combine(tmpDir, "savedata03.hg");
+            File.WriteAllText(savePath, "dummy");
+
+            // Sibling manifest02.hg written by the game (platform build 4221).
+            string siblingPath = Path.Combine(tmpDir, "manifest02.hg");
+            byte[] sibling = new byte[MetaFileWriter.SWITCH_META_LENGTH_WORLDS_II];
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_HEADER_SWITCH), 0, sibling, 0, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(MetaFileWriter.META_FORMAT_4), 0, sibling, 4, 4);
+            Buffer.BlockCopy(BitConverter.GetBytes(4221u), 0, sibling, 20, 4);
+            File.WriteAllBytes(siblingPath, sibling);
+
+            var metaInfo = new SaveMetaInfo
+            {
+                BaseVersion = 4727, // JSON "Version" field - higher than the game build
+                GameMode = 1,
+            };
+
+            MetaFileWriter.WriteSwitchMeta(savePath, 4096, metaInfo, 3);
+
+            string metaPath = Path.Combine(tmpDir, "manifest03.hg");
+            Assert.True(File.Exists(metaPath));
+            byte[] result = File.ReadAllBytes(metaPath);
+
+            int baseVersion = BitConverter.ToInt32(result, 20);
+            Assert.Equal(4221, baseVersion);
+
+            uint format = BitConverter.ToUInt32(result, 4);
+            Assert.Equal(MetaFileWriter.META_FORMAT_4, format);
+
+            uint decompressedSize = BitConverter.ToUInt32(result, 8);
+            Assert.Equal(4096u, decompressedSize);
+        }
+        finally
+        {
+            Directory.Delete(tmpDir, true);
+        }
+    }
+
+    [Fact]
     public void PlaystationStreamingMeta_AccountMeta_WritesCorrectHeader()
     {
         string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_{Guid.NewGuid():N}");
@@ -1929,5 +2181,66 @@ public class PlatformIOTests
         {
             Directory.Delete(tmpDir, true);
         }
+    }
+
+    [Fact]
+    public void SaveToFile_NewSlotMeta_InheritsGameBuildVersionFromSibling()
+    {
+        // Regression: writing a save into a brand-new slot used to put the save-format
+        // Version (JSON field) into the meta base version.  The game compares that field
+        // to the game build version and refuses the slot with a
+        // "Cross-Save Version Incompatible" error.  When no meta exists for the new
+        // slot, the meta writer must inherit the game build version from a sibling meta.
+        string? repoRoot = FindReferenceRoot();
+        if (repoRoot == null) return;
+
+        string sourceDir = Path.Combine(repoRoot, "_ref", "save_names");
+        string sourceSave = Path.Combine(sourceDir, "save2.hg");
+        string sourceMeta = Path.Combine(sourceDir, "mf_save2.hg");
+        if (!File.Exists(sourceSave) || !File.Exists(sourceMeta)) return;
+
+        var siblingMeta = MetaFileWriter.ReadSteamMeta(sourceSave, 3);
+        if (siblingMeta == null || siblingMeta[0] != MetaFileWriter.META_HEADER || siblingMeta.Length < 18)
+            return;
+        int expectedBaseVersion = (int)siblingMeta[17];
+        Assert.True(expectedBaseVersion > 0);
+
+        string tmpDir = Path.Combine(Path.GetTempPath(), $"nmse_test_newslot_meta_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tmpDir);
+        try
+        {
+            File.Copy(sourceSave, Path.Combine(tmpDir, "save2.hg"));
+            File.Copy(sourceMeta, Path.Combine(tmpDir, "mf_save2.hg"));
+
+            var save = SaveFileManager.LoadSaveFile(Path.Combine(tmpDir, "save2.hg"));
+            Assert.NotNull(save);
+
+            string newSlotPath = Path.Combine(tmpDir, "save11.hg");
+            SaveFileManager.SaveToFile(newSlotPath, save!, compress: true, writeMeta: true,
+                platform: SaveFileManager.Platform.Steam, slotIndex: 11);
+
+            var newMeta = MetaFileWriter.ReadSteamMeta(newSlotPath, 12);
+            Assert.NotNull(newMeta);
+            Assert.Equal(MetaFileWriter.META_HEADER, newMeta![0]);
+            Assert.Equal(expectedBaseVersion, (int)newMeta[17]);
+        }
+        finally
+        {
+            Directory.Delete(tmpDir, true);
+        }
+    }
+
+    /// <summary>Walks up from the test binary to the repository root (the folder containing _ref).</summary>
+    private static string? FindReferenceRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        for (int i = 0; i < 10; i++)
+        {
+            if (Directory.Exists(Path.Combine(dir, "_ref"))) return dir;
+            var parent = Directory.GetParent(dir);
+            if (parent == null) break;
+            dir = parent.FullName;
+        }
+        return null;
     }
 }

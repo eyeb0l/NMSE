@@ -12,6 +12,25 @@ internal sealed record JsonEditResult(string? Key, string Value);
 
 internal static class JsonDialogs
 {
+    internal static async Task ShowSnippetAsync(Window owner, string snippet, Action<string> apply)
+    {
+        var editor = new TextBox { Text = snippet, AcceptsReturn = true, AcceptsTab = true, FontFamily = FontFamily.Parse("monospace") };
+        var error = new TextBlock { Foreground = Brushes.OrangeRed, TextWrapping = TextWrapping.Wrap };
+        var save = new Button { Content = UiStrings.Get("common.apply") };
+        var cancel = new Button { Content = UiStrings.Get("common.cancel") };
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, save } };
+        var content = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("*,Auto,Auto"), RowSpacing = 8 };
+        content.Children.Add(editor); content.Children.Add(error); Grid.SetRow(error, 1); content.Children.Add(buttons); Grid.SetRow(buttons, 2);
+        var window = CreateWindow(UiStrings.Get("raw_json.isolate_node"), 760, 580, content);
+        save.Click += (_, _) =>
+        {
+            try { apply(editor.Text ?? string.Empty); window.Close(); }
+            catch (Exception ex) when (ex is NMSE.Models.JsonException or FormatException or ArgumentException) { error.Text = ex.Message; }
+        };
+        cancel.Click += (_, _) => window.Close();
+        await window.ShowDialog(owner);
+    }
+
     internal static async Task<JsonEditResult?> ShowEditAsync(
         Window owner,
         string title,

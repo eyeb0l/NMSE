@@ -258,6 +258,24 @@ public class AppConfig
     public string? GetProperty(string key) =>
         _properties.GetValueOrDefault(key);
 
+    /// <summary>Returns stored properties whose key starts with the given prefix.</summary>
+    public IEnumerable<KeyValuePair<string, string>> GetProperties(string prefix) =>
+        _properties.Where(kv => kv.Key.StartsWith(prefix, StringComparison.Ordinal)).ToList();
+
+    /// <summary>
+    /// Removes all properties whose key starts with the given prefix.
+    /// Returns the number of properties removed.
+    /// </summary>
+    public int RemoveProperties(string prefix)
+    {
+        var keys = _properties.Keys
+            .Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
+            .ToList();
+        foreach (string key in keys)
+            _properties.Remove(key);
+        return keys.Count;
+    }
+
     /// <summary>Sets or removes a configuration property by key.</summary>
     public void SetProperty(string key, string? value)
     {

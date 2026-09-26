@@ -60,7 +60,7 @@ public static class UpdateService
             if (!char.IsDigit(span[i]))
                 continue;
 
-            // Found a digit – try to consume major.minor.patch
+            // Found a digit - try to consume major.minor.patch
             int start = i;
             while (i < span.Length && (char.IsDigit(span[i]) || span[i] == '.'))
                 i++;

@@ -111,14 +111,18 @@ internal sealed class AccountConsistencyDialog : Window
         return control;
     }
 
+    internal bool HasChanges { get; private set; }
+
     private void Resolve(AccountLogic.ConsistencyIssue issue, bool add)
     {
         AccountLogic.ResolveConsistencyIssue(_saveData, issue, add);
+        HasChanges = true;
         _issues.Remove(issue);
     }
 
     private void ResolveAll(bool add)
     {
+        HasChanges |= _issues.Count > 0;
         foreach (AccountLogic.ConsistencyIssue issue in _issues.ToArray())
             AccountLogic.ResolveConsistencyIssue(_saveData, issue, add);
         _issues.Clear();

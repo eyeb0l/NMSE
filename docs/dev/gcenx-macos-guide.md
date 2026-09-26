@@ -2,7 +2,7 @@
 
 A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using the Gcenx Wine packages from [Gcenx/macOS_Wine_builds](https://github.com/Gcenx/macOS_Wine_builds).
 
-> **Note:** This is an interim solution. A native cross-platform version using Eto.Forms is planned - see the [Cross-Platform Work Plan](cross-platform-workplan.md) for details.
+> **Note:** NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review.
 
 ---
 
@@ -17,7 +17,6 @@ A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using the G
 7. [Troubleshooting](#troubleshooting)
 8. [Known Limitations](#known-limitations)
 9. [Alternative: CrossOver (Paid)](#alternative-crossover-paid)
-10. [Future: Native macOS Support](#future-native-macos-support)
 
 ---
 
@@ -31,6 +30,7 @@ Gcenx Wine Builds are community-built Wine packages for macOS that provide a str
 - **Gecko and Mono included** to reduce prefix size
 - Works with **macOS Intel** and **Apple Silicon** via Rosetta 2
 - Supports the Windows applications NMSE requires
+- Supported package: Whisky and Homebrew Wine builds are not supported (Whisky is no longer maintained and both lag behind the Wine version NMSE needs). The paid CrossOver is supported as an alternative; see the [CrossOver macOS Guide](crossover-macos-guide.md)
 
 ---
 
@@ -73,7 +73,7 @@ The Gcenx Wine-Staging 11.6 build includes `wine-gecko` and `wine-mono 11.0.0`. 
 ### Step 2: Download NMSE
 
 1. Go to https://github.com/vectorcmdr/NMSE/releases
-2. Download the latest `NMSE-<version>.zip` file
+2. Download the latest `NMSE-<version>-Release.zip` file
 3. Extract it to a convenient folder, for example:
 
 ```bash
@@ -89,14 +89,18 @@ You should now have `NMSE.exe` and a `Resources/` folder in your NMSE directory.
 
 ### Step 3: Launch NMSE
 
-With Wine-Staging 11.6 installed, you can launch NMSE directly from the Wine bundle. Wine will automatically create and initialise a prefix the first time it runs NMSE.
+With Wine-Staging 11.6 installed, you can launch NMSE directly from the Wine bundle. The commands below keep NMSE in a dedicated prefix at `~/wineprefixes/nmse`, which the troubleshooting section refers to.
 
 From the NMSE install folder:
 
 ```bash
+export WINEPREFIX="$HOME/wineprefixes/nmse"
+export WINEARCH=win64
 cd ~/Applications/NMSE
 /Applications/Wine-Staging\ 11.6.app/Contents/Resources/bin/wine NMSE.exe
 ```
+
+Setting `WINEPREFIX` in your shell session (or adding these exports to your shell profile) applies to the commands in the rest of this guide.
 
 If your Gcenx bundle has a different app name, replace `Wine-Staging 11.6.app` with the installed app bundle name.
 
@@ -130,7 +134,7 @@ If you prefer, you can also open the save folder using a Wine file manager:
 
 ```bash
 export WINEPREFIX="$HOME/wineprefixes/nmse"
-/Applications/Wine\ Stable.app/Contents/Resources/bin/winefile
+/Applications/Wine-Staging\ 11.6.app/Contents/Resources/bin/winefile
 ```
 
 ---
@@ -161,7 +165,7 @@ If the `wine` or `winecfg` command cannot be found, verify the app bundle is in 
 Install Windows core fonts:
 
 ```bash
-/Applications/Wine\ Stable.app/Contents/Resources/bin/winetricks corefonts
+/Applications/Wine-Staging\ 11.6.app/Contents/Resources/bin/winetricks corefonts
 ```
 
 ### DPI / Retina Display Issues
@@ -193,20 +197,10 @@ If the UI appears too small on Retina screens:
 
 ## Alternative: CrossOver (Paid)
 
-If you prefer a more polished, supported experience, see the [CrossOver macOS Guide](crossover-macos-guide.md). CrossOver offers:
-- Better Apple Silicon performance in many cases
-- Commercial support and updates
-- A more automated setup flow
+If you prefer a guided installation with commercial support, CrossOver 26 or later (based on Wine 11) is supported. See the [CrossOver macOS Guide](crossover-macos-guide.md).
 
 ---
 
-## Future: Native macOS Support
+## Native Port
 
-The Wine compatibility layer is an interim solution. The planned native cross-platform version will:
-
-- Use **Eto.Forms** for a native macOS UI
-- Share business logic through **NMSE.Lib**
-- Support native menu bar and Cmd shortcuts
-- Ship as a small `.app` bundle instead of requiring Wine
-
-See the [Cross-Platform Work Plan](cross-platform-workplan.md) for the full migration roadmap.
+Options for a native macOS build are under review; there is no current plan.

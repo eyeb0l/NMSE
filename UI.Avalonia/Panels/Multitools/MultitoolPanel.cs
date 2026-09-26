@@ -57,6 +57,7 @@ public sealed class MultitoolPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
     private int _activeToolIndex;
     private int _selectedToolDataIndex = -1;
     private int _originalClassIndex = -1;
+    private int _originalTypeIndex = -1;
     private Dictionary<string, double>? _rawStats;
     private bool _loading;
 
@@ -414,6 +415,7 @@ public sealed class MultitoolPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
             MultitoolLogic.ToolData data = MultitoolLogic.LoadToolData(_multitools.GetObject(index));
             _name.Text = data.Name;
             SelectType(data.TypeIndex);
+            _originalTypeIndex = data.TypeIndex;
             _size.SelectedIndex = data.IsLarge.HasValue ? data.IsLarge.Value ? 0 : 1 : -1;
             _class.SelectedIndex = data.ClassIndex;
             _originalClassIndex = data.ClassIndex;
@@ -441,7 +443,7 @@ public sealed class MultitoolPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
         var values = new MultitoolLogic.ToolSaveValues
         {
             Name = _name.Text ?? string.Empty,
-            TypeIndex = GetSelectedTypeIndex(),
+            TypeIndex = GetSelectedTypeIndex() != _originalTypeIndex ? GetSelectedTypeIndex() : -1,
             IsLargeIndex = _size.SelectedIndex,
             ClassIndex = _class.SelectedIndex,
             OriginalClassIndex = _originalClassIndex,
@@ -458,6 +460,7 @@ public sealed class MultitoolPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
         MultitoolLogic.SaveToolData(tool, playerState, values, _selectedToolDataIndex == _activeToolIndex);
         StoreGrid.SaveInventory(tool.GetObject("Store"));
         _originalClassIndex = _class.SelectedIndex;
+        _originalTypeIndex = GetSelectedTypeIndex();
         if (_selector.SelectedItem is MultitoolLogic.ToolListItem item) item.DisplayName = string.IsNullOrWhiteSpace(_name.Text) ? UiStrings.Format("multitool.default_name", item.DataIndex + 1) : _name.Text;
     }
 

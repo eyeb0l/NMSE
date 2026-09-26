@@ -559,7 +559,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
         var dialog = new AccountConsistencyDialog(issues, _currentSaveData, _resources);
         await dialog.ShowDialog(owner);
-        DataModified?.Invoke(this, EventArgs.Empty);
+        if (dialog.HasChanges) DataModified?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnRewardChanged(object? sender, EventArgs e)

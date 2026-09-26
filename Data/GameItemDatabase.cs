@@ -169,6 +169,16 @@ public class GameItemDatabase
                             }
                         }
 
+                        // Raw category fields kept for the Database Search detail view
+                        // and matching. These are populated for products/substances
+                        // where the game does not write the generic Category field.
+                        if (element.TryGetProperty("ProductCategory", out var prodCatProp))
+                            item.ProductCategory = prodCatProp.GetString() ?? "";
+                        if (element.TryGetProperty("SubstanceCategory", out var subCatProp))
+                            item.SubstanceCategory = subCatProp.GetString() ?? "";
+                        if (element.TryGetProperty("WikiCategory", out var wikiCatProp))
+                            item.WikiCategory = wikiCatProp.GetString() ?? "";
+
                         if (element.TryGetProperty("Upgrade", out var upgProp) && upgProp.ValueKind == JsonValueKind.True)
                             item.IsUpgrade = true;
 

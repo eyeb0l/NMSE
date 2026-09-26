@@ -235,7 +235,7 @@ internal static class AccountLogic
     /// <para>
     /// This function is provided for future use (e.g. a catalogue-browsed items panel)
     /// and for completeness. It must <b>not</b> be called from reward unlock or
-    /// redemption sync paths — doing so would incorrectly remove catalogue-browsed
+    /// redemption sync paths - doing so would incorrectly remove catalogue-browsed
     /// history for any item whose redeem state happens to be false.
     /// </para>
     /// <para>

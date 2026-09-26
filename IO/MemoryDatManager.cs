@@ -76,8 +76,8 @@ public static class MemoryDatManager
 
     // Total file sizes.
     // Correct homebrew size is exactly 32 MB.
-    private const int MEMORYDAT_LENGTH_TOTAL = 0x2000000;            // 32 MB – homebrew
-    private const int MEMORYDAT_LENGTH_TOTAL_SAVEWIZARD = 0x3000000; // 48 MB – SaveWizard
+    private const int MEMORYDAT_LENGTH_TOTAL = 0x2000000;            // 32 MB - homebrew
+    private const int MEMORYDAT_LENGTH_TOTAL_SAVEWIZARD = 0x3000000; // 48 MB - SaveWizard
 
     // PS4 supports 5 game save slots, each with auto + manual = 2 containers, plus 1 account slot.
     // Correct total is 11.
@@ -232,7 +232,7 @@ public static class MemoryDatManager
     /// The file layout follows the SaveWizard / PS4 known specification:
     /// <list type="bullet">
     ///   <item><description>[0x0000..0x003F] 64-byte preamble: "NOMANSKY" magic bytes, meta format, meta offset, slot count, total length, then zeros.</description></item>
-    ///   <item><description>[0x0040..0x03AF] 11 × 48-byte metadata entries (one per slot).</description></item>
+    ///   <item><description>[0x0040..0x03AF] 11 x 48-byte metadata entries (one per slot).</description></item>
     ///   <item><description>[0x1040..]       Pre-decompressed JSON data, packed sequentially, no LZ4.</description></item>
     ///   <item><description>Total file size: 48 MB (0x3000000).</description></item>
     /// </list>
@@ -277,17 +277,17 @@ public static class MemoryDatManager
             }
         }
 
-        // -- 11 × 48-byte meta entries starting at 0x40 --
+        // -- 11 x 48-byte meta entries starting at 0x40 --
         // 48-byte entry layout:
         //   +0  META_HEADER        (uint)
         //   +4  format = 1         (uint)
-        //   +8  compressedSize     (uint) — equals decompressed size (no LZ4 in SW)
-        //   +12 chunkOffset        (uint) — set to SAVEWIZARD_OFFSET so chunkOffset≠0 -> exists
-        //   +16 chunkSize          (uint) — equals decompressed size
+        //   +8  compressedSize     (uint) - equals decompressed size (no LZ4 in SW)
+        //   +12 chunkOffset        (uint) - set to SAVEWIZARD_OFFSET so chunkOffset!=0 -> exists
+        //   +16 chunkSize          (uint) - equals decompressed size
         //   +20 metaIndex = i      (uint)
         //   +24 timestamp          (uint)
         //   +28 decompressedSize   (uint)
-        //   +32 SAVEWIZARD_OFFSET  (uint) — absolute offset of data in file (field[8])
+        //   +32 SAVEWIZARD_OFFSET  (uint) - absolute offset of data in file (field[8])
         //   +36 padding            (uint)
         //   +40 padding            (uint)
         //   +44 padding            (uint)
@@ -349,7 +349,7 @@ public static class MemoryDatManager
         using var ms = new MemoryStream(buffer);
         using var writer = new BinaryWriter(ms);
 
-        // Only write metadata for 11 containers (1 account + 5 slots × 2), not 31.
+        // Only write metadata for 11 containers (1 account + 5 slots x 2), not 31.
         for (int i = 0; i < MEMORYDAT_TOTAL_SLOT_COUNT; i++)
         {
             if (slotMeta.TryGetValue(i, out var meta) && meta.Exists)

@@ -61,6 +61,7 @@
         <TreeView.ContextMenu>
           <ContextMenu Opening="OnContextMenuOpening">
             <MenuItem x:Name="EditMenuItem" Header="Edit Value" Click="OnEditNode" />
+            <MenuItem x:Name="IsolateMenuItem" Header="Isolate Node" Click="OnIsolateNode" />
             <Separator />
             <MenuItem x:Name="AddPropertyMenuItem" Header="Add Property" Click="OnAddProperty" />
             <MenuItem x:Name="AddArrayItemMenuItem" Header="Add Array Item" Click="OnAddArrayItem" />
@@ -107,6 +108,7 @@
           <TreeView.ContextMenu>
             <ContextMenu Opening="OnContextMenuOpening">
               <MenuItem x:Name="SplitEditMenuItem" Header="Edit Value" Click="OnEditNode" />
+              <MenuItem x:Name="SplitIsolateMenuItem" Header="Isolate Node" Click="OnIsolateNode" />
               <Separator />
               <MenuItem x:Name="SplitAddPropertyMenuItem" Header="Add Property" Click="OnAddProperty" />
               <MenuItem x:Name="SplitAddArrayItemMenuItem" Header="Add Array Item" Click="OnAddArrayItem" />

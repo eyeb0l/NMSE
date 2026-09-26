@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -42,6 +42,7 @@
     <Compile Include="..\Data\RecipeDatabase.cs" Link="Data\RecipeDatabase.cs" />
     <Compile Include="..\Data\LocalisationService.cs" Link="Data\LocalisationService.cs" />
     <Compile Include="..\Data\UiStrings.cs" Link="Data\UiStrings.cs" />
+    <Compile Include="..\Data\CatalogueDatabase.cs" Link="Data\CatalogueDatabase.cs" />
   </ItemGroup>
 
   <!-- Models (JSON engine, no WinForms dependency) -->
@@ -110,6 +111,21 @@
     <Compile Include="..\Core\Utilities\RawNumberGuard.cs" Link="Core\Utilities\RawNumberGuard.cs" />
     <Compile Include="..\Core\InventoryBulkActions.cs" Link="Core\InventoryBulkActions.cs" />
     <Compile Include="..\Core\SaveContext.cs" Link="Core\SaveContext.cs" />
+    <Compile Include="..\Core\SpaceStationLogic.cs" Link="Core\SpaceStationLogic.cs" />
+    <Compile Include="..\Core\SpacePoiSlotInference.cs" Link="Core\SpacePoiSlotInference.cs" />
+    <Compile Include="..\Core\SpacePoiSlotTokens.cs" Link="Core\SpacePoiSlotTokens.cs" />
+    <Compile Include="..\Core\DiscoveriesFile.cs" Link="Core\DiscoveriesFile.cs" />
+    <Compile Include="..\Core\SpacePoiLayoutsFile.cs" Link="Core\SpacePoiLayoutsFile.cs" />
+    <Compile Include="..\Config\DiscoveriesStore.cs" Link="Config\DiscoveriesStore.cs" />
+    <Compile Include="..\Data\SpacePoiLayoutCache.cs" Link="Data\SpacePoiLayoutCache.cs" />
+    <Compile Include="..\Data\SpacePoiTableDatabase.cs" Link="Data\SpacePoiTableDatabase.cs" />
+    <Compile Include="..\Core\DatabaseSearchLogic.cs" Link="Core\DatabaseSearchLogic.cs" />
+    <Compile Include="..\Core\CatalogueCompletionLogic.cs" Link="Core\CatalogueCompletionLogic.cs" />
+    <Compile Include="..\Core\CatalogueCompletionLogic.Wonders.cs" Link="Core\CatalogueCompletionLogic.Wonders.cs" />
+    <Compile Include="..\Core\CatalogueCompletionLogic.Account.cs" Link="Core\CatalogueCompletionLogic.Account.cs" />
+    <Compile Include="..\Core\CatalogueCompletionLogic.Stats.cs" Link="Core\CatalogueCompletionLogic.Stats.cs" />
+    <Compile Include="..\Core\CatalogueCompletionLogic.Knowledge.cs" Link="Core\CatalogueCompletionLogic.Knowledge.cs" />
+    <Compile Include="..\Core\KnowledgeCatalogue.cs" Link="Core\KnowledgeCatalogue.cs" />
   </ItemGroup>
 
   <!-- Config (application settings - no WinForms dependency) -->

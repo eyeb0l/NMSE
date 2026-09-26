@@ -92,8 +92,8 @@ public class StarshipLogicTests
         AddBuildingObject(objects, "^B_TRU_C", 1);   // Engine/Thruster (priority 2)
         AddBuildingObject(objects, "^BUILDTABLE", 3); // Other
 
-        int count = StarshipLogic.ReorderBuildingObjects(objects);
-        Assert.Equal(5, count);
+        int moved = StarshipLogic.ReorderBuildingObjects(objects);
+        Assert.Equal(3, moved);
 
         // Sorted by priority: Reactor, Engine, Access, Cockpit, Other
         Assert.Equal("^B_GEN_1", objects.GetObject(0).GetString("ObjectID"));
@@ -148,8 +148,8 @@ public class StarshipLogicTests
         var objects = new JsonArray();
         AddBuildingObject(objects, "^ONLY", 42);
 
-        int count = StarshipLogic.ReorderBuildingObjects(objects);
-        Assert.Equal(1, count);
+        int moved = StarshipLogic.ReorderBuildingObjects(objects);
+        Assert.Equal(0, moved);
         Assert.Equal("^ONLY", objects.GetObject(0).GetString("ObjectID"));
     }
 
@@ -163,7 +163,8 @@ public class StarshipLogicTests
         AddBuildingObject(objects, "^B_LND_A", 3);      // Gear
         AddBuildingObject(objects, "^BUILDTABLE", 0);   // Other
 
-        StarshipLogic.ReorderBuildingObjects(objects);
+        int moved = StarshipLogic.ReorderBuildingObjects(objects);
+        Assert.Equal(0, moved);
 
         Assert.Equal("^B_GEN_1", objects.GetObject(0).GetString("ObjectID"));
         Assert.Equal("^B_TRU_C", objects.GetObject(1).GetString("ObjectID"));
@@ -276,7 +277,7 @@ public class StarshipLogicTests
         // B_GEN parts are Reactor (priority 1) via priority map
         Assert.Equal(1, StarshipLogic.GetPartPriority("B_GEN_0"));
         Assert.Equal(1, StarshipLogic.GetPartPriority("^B_GEN_1"));
-        // B_GEN_3 is NOT in Priority.Map → OtherPriority
+        // B_GEN_3 is NOT in Priority.Map -> OtherPriority
         Assert.Equal(StarshipDatabase.OtherPriority, StarshipLogic.GetPartPriority("B_GEN_3"));
     }
 
@@ -563,7 +564,7 @@ public class StarshipLogicTests
         """);
         var bases = json.GetArray("Bases")!;
 
-        // Looking for slot 7 — must NOT find slot 5's base
+        // Looking for slot 7 - must NOT find slot 5's base
         int idx = StarshipLogic.FindCorvetteBaseIndex(bases, 7);
         Assert.Equal(-1, idx);
 

@@ -175,7 +175,7 @@ internal static class CompanionLogic
     }
 
     /// <summary>
-    /// Maximum number of pet slots supported by the game (indices 0–29).
+    /// Maximum number of pet slots supported by the game (indices 0-29).
     /// </summary>
     internal const int MaxPetSlots = 30;
 
@@ -183,7 +183,7 @@ internal static class CompanionLogic
     /// Sets the unlocked state for a companion slot in the UnlockedPetSlots array.
     /// </summary>
     /// <param name="playerState">The PlayerStateData JSON object.</param>
-    /// <param name="slotIndex">The pet slot index (0–29).</param>
+    /// <param name="slotIndex">The pet slot index (0-29).</param>
     /// <param name="unlocked">Whether the slot should be unlocked.</param>
     internal static void SetSlotUnlocked(JsonObject playerState, int slotIndex, bool unlocked)
     {
@@ -374,7 +374,7 @@ internal static class CompanionLogic
                                 }
                                 else
                                 {
-                                    // No existing entry — create wrapper object { Data: importedAcc }
+                                    // No existing entry - create wrapper object { Data: importedAcc }
                                     var wrapper = new JsonObject();
                                     wrapper.Set("Data", importedAcc);
                                     petAccessoryCustomisationArray.Set(i, wrapper);

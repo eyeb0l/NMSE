@@ -495,8 +495,8 @@ internal static class FreighterLogic
     /// Resizes all three freighter inventory objects to the specified dimensions.
     /// </summary>
     /// <param name="playerState">The player state JSON object.</param>
-    /// <param name="width">The new width (1–15).</param>
-    /// <param name="height">The new height (1–13).</param>
+    /// <param name="width">The new width (1-15).</param>
+    /// <param name="height">The new height (1-13).</param>
     internal static void ResizeFreighterInventories(JsonObject playerState, int width, int height)
     {
         foreach (string invKey in new[] { "FreighterInventory", "FreighterInventory_TechOnly", "FreighterInventory_Cargo" })

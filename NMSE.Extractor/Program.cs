@@ -106,6 +106,10 @@ public class Program
                 Console.WriteLine("\n--- Step 9: Categorizing and saving JSON ---");
                 CategorizeAndSave(baseData, jsonDir, mbinDir);
 
+                // Step 9b: Build the derived catalogue completion pack
+                Console.WriteLine("\n--- Step 9b: Building Catalogue Pack ---");
+                CataloguePackBuilder.WriteCataloguePack(jsonDir, baseData, mbinDir);
+
                 // Step 10: Generate TechPack partial class from technology data
                 Console.WriteLine("\n--- Step 10: Generating TechPackDatabase.Generated.cs ---");
                 GenerateTechPackPartialClass(baseData, resourcesDir);
@@ -245,6 +249,7 @@ public class Program
             ("Trade", "nms_reality_gcproducttable.MXML", Parsers.ParseTrade),
             ("ShipComponents", "nms_modularcustomisationproducts.MXML", Parsers.ParseShipComponents),
             ("BaseParts", "nms_basepartproducts.MXML", Parsers.ParseBaseParts),
+            ("SpacePoi", "spacepoitable.MXML", Parsers.ParseSpacePoiTable),
             ("ProceduralTech", "nms_reality_gcproceduraltechnologytable.MXML", Parsers.ParseProceduralTech),
             ("Egg Modifiers", "peteggtraitmodifieroverridetable.MXML", Parsers.ParsePetEggTraitModifiers),
             ("Recipes", "nms_reality_gcrecipetable.MXML", Parsers.ParseAllRecipes),
@@ -340,6 +345,8 @@ public class Program
             finalFiles["Wiki Guide.json"] = baseData["WikiGuide"];
         if (baseData.ContainsKey("CompanionAccessories"))
             finalFiles["Companion Accessories.json"] = baseData["CompanionAccessories"];
+        if (baseData.ContainsKey("SpacePoi"))
+            finalFiles["Space POI.json"] = baseData["SpacePoi"];
         if (baseData.ContainsKey("ShipCustomisation"))
             finalFiles["Ship Customisation.json"] = baseData["ShipCustomisation"];
         if (baseData.ContainsKey("ColourPalettes"))
@@ -400,7 +407,7 @@ public class Program
         {
             ["Buildings.json"] = new(), ["Constructed Technology.json"] = new(), ["Food.json"] = new(),
             ["Corvette.json"] = new(), ["Curiosities.json"] = new(), ["Exocraft.json"] = new(),
-            ["Starships.json"] = new(), ["Others.json"] = new(), ["Products.json"] = new(),
+            ["Station.json"] = new(), ["Starships.json"] = new(), ["Others.json"] = new(), ["Products.json"] = new(),
             ["Technology.json"] = new(), ["Technology Module.json"] = new(), ["Upgrades.json"] = new(),
         };
 
@@ -463,9 +470,9 @@ public class Program
 
         // Reclassify items between Upgrades.json and Technology Module.json based on DeploysInto.
         // Items in Upgrades.json WITH DeploysInto are cargo-holdable tech module fragments
-        // that unpack into technology slots — they belong in Technology Module.json.
+        // that unpack into technology slots - they belong in Technology Module.json.
         // Items in Technology Module.json WITHOUT DeploysInto are actual tech upgrades
-        // meant to be installed directly — they belong in Upgrades.json.
+        // meant to be installed directly - they belong in Upgrades.json.
         ReclassifyByDeploysInto(finalFiles);
 
         // Re-route Raw Materials items that belong elsewhere (e.g. Reward Item -> Others.json).
@@ -1171,6 +1178,7 @@ public class Program
             ["Technology Module.json"] = "technology/", ["Others.json"] = "other/",
             ["Buildings.json"] = "buildings/", ["Trade.json"] = "other/",
             ["Exocraft.json"] = "exocraft/", ["Starships.json"] = "starships/",
+            ["Station.json"] = "station/",
             ["Upgrades.json"] = "upgrades/", ["Egg Modifiers.json.tbc"] = "pet-eggs/",
         };
 

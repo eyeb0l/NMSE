@@ -199,7 +199,7 @@ public sealed partial class MainWindow : Window
             "tab.player", "tab.exosuit", "tab.multitools", "tab.starships", "tab.fleet",
             "tab.exocraft", "tab.companions", "tab.bases_storage", "tab.discoveries",
             "tab.milestones", "tab.settlements", "tab.bytebeats", "tab.account_rewards",
-            "tab.export_settings", "tab.raw_json_editor",
+            "tab.export_settings", "tab.raw_json_editor", "tab.database_search",
         ];
 
         if (this.FindControl<TabControl>("MainTabs") is { } tabs)
@@ -213,6 +213,7 @@ public sealed partial class MainWindow : Window
 
         _exportSettingsPanel?.ApplyUiLocalisation();
         _rawJsonPanel?.ApplyUiLocalisation();
+        (this.FindControl<TabItem>("DatabaseSearchTab")?.Content as DatabaseSearchPanel)?.ApplyUiLocalisation();
         foreach (EditorLock editorLock in _editorLocks)
             editorLock.Overlay.RefreshLocalisation();
     }
@@ -408,6 +409,9 @@ public sealed partial class MainWindow : Window
             _cataloguePanel.GoToJsonRequested += OnGoToJsonRequested;
         }
 
+        var searchTab = this.FindControl<TabItem>("DatabaseSearchTab");
+        if (searchTab != null && searchTab.Content == null)
+            searchTab.Content = new DatabaseSearchPanel(_resources.Items);
         UpdateEditorLockState();
     }
 
@@ -610,6 +614,7 @@ public sealed partial class MainWindow : Window
                 _accountRewardsPanel?.AccountSourcePath);
             _playerPanel?.SetSaveFilePath(session.SourcePath);
             _playerPanel?.SetAccountData(_accountRewardsPanel?.AccountData);
+            _cataloguePanel?.SetAccountData(_accountRewardsPanel?.AccountData);
 
             _panelCoordinator.BeginSession(
                 data,
@@ -1073,13 +1078,13 @@ public sealed partial class MainWindow : Window
             AddFileSlot(result, $"Slot {index + 1}", Path.Combine(directory, autoName), Path.Combine(directory, manualName));
         }
 
-        if (result.Count == 0 && platform == SaveFileManager.Platform.PS4)
+        if (result.Count == 0 && platform is SaveFileManager.Platform.PS4 or SaveFileManager.Platform.Switch)
         {
             for (int index = 0; index < 15; index++)
             {
                 AddFileSlot(
                     result,
-                    $"PS4: Slot {index + 1}",
+                    $"{(platform == SaveFileManager.Platform.Switch ? "Switch" : "PS4")}: Slot {index + 1}",
                     Path.Combine(directory, $"savedata{index * 2 + 2:D2}.hg"),
                     Path.Combine(directory, $"savedata{index * 2 + 3:D2}.hg"));
             }

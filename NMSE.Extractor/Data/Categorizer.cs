@@ -244,7 +244,7 @@ public static class Categorizer
             "Rogue Technology Echo", "Salvaged Autophage Component",
             "Salvaged Upgrade Components", "Scrambled Geographic Data",
             "Secret Cartographic Data", "Secure System Pass",
-            "Sentinel Spawn Capsule", "Ship-summoning beacon", "Spacetime Tether",
+            "Sentinel Spawn Capsule", "Spacetime Tether",
             "Spawning Sac", "Starship Customisation Option",
             "Starship Exhaust Override", "Starship Interior Adornment",
             "Starship Subcomponent", "Teleport Network Tunnel", "Titanic Spawn",
@@ -451,6 +451,40 @@ public static class Categorizer
     };
 
     /// <summary>
+    /// Determines whether an item is a BuildingPart product:
+    /// both ProductCategory and SubstanceCategory are "BuildingPart".
+    /// </summary>
+    private static bool IsBuildingPartProduct(Dictionary<string, object?> item)
+    {
+        string productCategory = (item.GetValueOrDefault("ProductCategory")?.ToString() ?? "").Trim();
+        string substanceCategory = (item.GetValueOrDefault("SubstanceCategory")?.ToString() ?? "").Trim();
+        return productCategory.Equals("BuildingPart", StringComparison.OrdinalIgnoreCase)
+            && substanceCategory.Equals("BuildingPart", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Determines whether an item matches the vehicle keyword routing:
+    /// group or name contains exocraft/submarine/nautilon, or the ID uses
+    /// the up_veh / u_exo prefixes.
+    /// </summary>
+    private static bool VehicleKeywordMatch(Dictionary<string, object?> item)
+    {
+        string group = (item.GetValueOrDefault("Group")?.ToString() ?? "").Trim();
+        string name = (item.GetValueOrDefault("Name")?.ToString() ?? "").Trim();
+        string itemId = (item.GetValueOrDefault("Id")?.ToString() ?? "").Trim();
+
+        string groupLower = group.ToLowerInvariant();
+        string nameLower = name.ToLowerInvariant();
+        string itemIdLower = itemId.ToLowerInvariant();
+
+        return groupLower.Contains("exocraft") || nameLower.Contains("exocraft")
+            || groupLower.Contains("submarine") || nameLower.Contains("submarine")
+            || groupLower.Contains("nautilon") || nameLower.Contains("nautilon")
+            || itemIdLower.StartsWith("up_veh", StringComparison.Ordinal)
+            || itemIdLower.StartsWith("u_exo", StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Determine which output file an item belongs to based on its Group field.
     /// Returns the filename or null to skip the item.
     /// </summary>
@@ -497,11 +531,21 @@ public static class Categorizer
             (StarshipComponentGroupPattern.IsMatch(group) || StarshipExactGroups.Contains(group)))
             return "Starships.json";
 
+        // Space Station routing (Cosmos v7.0 build parts).
+        // Runs before the vehicle keyword routing so station parts whose names contain
+        // vehicle keywords (e.g. STA_ROOM_NPCVEH "Exocraft Terminal") are captured here.
+        if (group.Equals("Space Station Decoration", StringComparison.Ordinal)
+            || group.Equals("Orbital Base Module", StringComparison.Ordinal))
+            return "Station.json";
+
+        // BuildingPart products that match vehicle keywords (exocraft/submarine/nautilon)
+        // are base/freighter build parts (rooms, bays, terminals), not exocraft tech.
+        // Route them to Buildings.json instead of Exocraft.json.
+        if (IsBuildingPartProduct(item) && VehicleKeywordMatch(item))
+            return "Buildings.json";
+
         // Exocraft routing
-        if (groupLower.Contains("exocraft") || nameLower.Contains("exocraft") ||
-            groupLower.Contains("submarine") || nameLower.Contains("submarine") ||
-            groupLower.Contains("nautilon") || nameLower.Contains("nautilon") ||
-            itemIdLower.StartsWith("up_veh", StringComparison.Ordinal) || itemIdLower.StartsWith("u_exo", StringComparison.Ordinal))
+        if (VehicleKeywordMatch(item))
             return "Exocraft.json";
 
         // Dynamic TechnologyModule pattern
@@ -527,6 +571,12 @@ public static class Categorizer
         if (itemId.StartsWith("U_TECHPACK_", StringComparison.OrdinalIgnoreCase) ||
             itemId.StartsWith("U_TECHBOX_", StringComparison.OrdinalIgnoreCase))
             return null;
+
+        // BuildingPart products with unrecognized groups belong in Buildings.json.
+        // Runs after the exact rules so intentionally-categorised building products
+        // (Constructed Technology terminals, Products seeds, etc.) are not moved.
+        if (IsBuildingPartProduct(item))
+            return "Buildings.json";
 
         // Default: valid items with unrecognized groups.
         // Use SourceTable to route to the correct type-specific file before

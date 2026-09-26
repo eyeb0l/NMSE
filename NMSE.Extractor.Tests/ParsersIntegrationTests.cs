@@ -285,6 +285,105 @@ public class ParsersIntegrationTests
     }
 
     [Fact]
+    public void ProductLookup_ParseProductElement_IncludesCuratedNameForMissingLocalisation()
+    {
+        string tmpDir = CreateTempDir();
+        try
+        {
+            // U_CRFIGHT1 references loc keys that no language table provides; it is
+            // curated so it must survive the localisation gate with a "[?]" name.
+            // NO_LOCALISATION_ITEM is not curated and must stay excluded.
+            string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Data template=""GcProductTable"">
+  <Property name=""Table"">
+    <Property name=""Table"" value=""GcProductData.xml"" _id=""U_CRFIGHT1"">
+      <Property name=""ID"" value=""U_CRFIGHT1"" />
+      <Property name=""Name"" value=""UT_CR_FIGHT_NAME"" />
+      <Property name=""Subtitle"" value=""UP_CRUI1_SUB"" />
+      <Property name=""Description"" value=""UP_CRUI_SUB"" />
+      <Property name=""Icon""><Property name=""Filename"" value=""TEXTURES/UI/FRONTEND/ICONS/TECHNOLOGY/RENDER.PHASEBEAMMOD.DDS"" /></Property>
+    </Property>
+    <Property name=""Table"" value=""GcProductData.xml"" _id=""NO_LOCALISATION_ITEM"">
+      <Property name=""ID"" value=""NO_LOCALISATION_ITEM"" />
+      <Property name=""Name"" value=""UNKNOWN_NAME_KEY"" />
+      <Property name=""Subtitle"" value=""UNKNOWN_SUB_KEY"" />
+      <Property name=""Description"" value=""UNKNOWN_DESC_KEY"" />
+      <Property name=""Icon""><Property name=""Filename"" value=""TEXTURES/UI/ITEMS/UNKNOWN.DDS"" /></Property>
+    </Property>
+  </Property>
+</Data>";
+
+            string file = Path.Combine(tmpDir, "nms_reality_gcproducttable.MXML");
+            File.WriteAllText(file, xml);
+            MxmlParser.ClearXmlCache();
+            MxmlParser.ClearLocalisationCache();
+
+            var lookup = ProductLookup.LoadProductLookup(new Dictionary<string, string>(), file);
+
+            Assert.True(lookup.ContainsKey("U_CRFIGHT1"));
+            var curated = lookup["U_CRFIGHT1"];
+            Assert.Equal("[?] Phase Beam Module", curated["Name"]?.ToString());
+            Assert.Equal("Corvette Upgrade", curated["Group"]?.ToString());
+            Assert.Null(curated["Name_LocStr"]);
+            Assert.False(lookup.ContainsKey("NO_LOCALISATION_ITEM"));
+
+            // Official localisation must win once a future game update provides it.
+            string langDir = Path.Combine(tmpDir, "json", "lang");
+            Directory.CreateDirectory(langDir);
+            File.WriteAllText(Path.Combine(langDir, "en-GB.json"),
+                "{\"UT_CR_FIGHT_NAME\":\"Phase Beam Module\"}");
+            MxmlParser.ClearLocalisationCache();
+            var officialLocalisation = MxmlParser.LoadLocalisation(Path.Combine(tmpDir, "json"));
+            var official = ProductLookup.LoadProductLookup(officialLocalisation, file);
+
+            Assert.Equal("Phase Beam Module", official["U_CRFIGHT1"]["Name"]?.ToString());
+            Assert.Equal("UT_CR_FIGHT_NAME", official["U_CRFIGHT1"]["Name_LocStr"]?.ToString());
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void ParseTechnology_IncludesCuratedNameForMissingLocalisation()
+    {
+        string tmpDir = CreateTempDir();
+        try
+        {
+            string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Data template=""GcTechnologyTable"">
+  <Property name=""Table"">
+    <Property name=""Table"" value=""GcTechnology.xml"" _id=""SPIDERBRAIN"">
+      <Property name=""ID"" value=""SPIDERBRAIN"" />
+      <Property name=""Name"" value=""UI_SPIDERBRAIN_NAME"" />
+      <Property name=""Subtitle"" value=""UI_SPIDERBRAIN_SUB"" />
+      <Property name=""Description"" value=""UI_SPIDERBRAIN_DESC"" />
+      <Property name=""Icon""><Property name=""Filename"" value=""TEXTURES/UI/FRONTEND/ICONS/TECHNOLOGY/TECH.SPIDERBRAIN.DDS"" /></Property>
+    </Property>
+  </Property>
+</Data>";
+
+            string file = Path.Combine(tmpDir, "nms_reality_gctechnologytable.MXML");
+            File.WriteAllText(file, xml);
+            MxmlParser.ClearXmlCache();
+            MxmlParser.ClearLocalisationCache();
+
+            var technologies = Parsers.ParseTechnology(file);
+
+            var item = Assert.Single(technologies);
+            Assert.Equal("SPIDERBRAIN", item["Id"]?.ToString());
+            Assert.Equal("[?] Spider Brain", item["Name"]?.ToString());
+            Assert.Equal("Sentinel Technology", item["Group"]?.ToString());
+            Assert.Null(item["Name_LocStr"]);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void ParseBuildings_ExtractsCanPickUpAndIsTemporary()
     {
         string tmpDir = CreateTempDir();
@@ -1403,6 +1502,182 @@ public class ParsersIntegrationTests
             Assert.Equal("Primary", sailExtra[0]["ColourAlt"]);
             Assert.Equal("SailShip_Sails", sailExtra[0]["DisplayPaletteId"]);
             Assert.Equal("starship.customisation_sail_colour", sailExtra[0]["LabelKey"]);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void ParseSpacePoiTable_ReturnsTypeOrderCountsAndLevels()
+    {
+        string tmpDir = CreateTempDir();
+        try
+        {
+            string mbinDir = Path.Combine(tmpDir, "mbin");
+            Directory.CreateDirectory(mbinDir);
+            Directory.CreateDirectory(Path.Combine(tmpDir, "json", "lang"));
+            File.WriteAllText(Path.Combine(tmpDir, "json", "lang", "en-GB.json"),
+                "{\"UI_SPACEPOI_TYPE_HULK\":\"Space Hulk\",\"UI_SPACEPOI_TYPE_BASEPLATFORM_I\":\"Habitable Comet Fragment\",\"UI_SPACEPOI_TYPE_OUTPOST_SLIME\":\"Infested Outpost\"}");
+
+            string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Data template=""cGcSpacePoiTable"">
+  <Property name=""GenerationData"">
+    <Property name=""GenerationData"" value=""GcSpacePoiGenerationData"" _index=""0"">
+      <Property name=""GenerationVersion"" value=""0"" />
+      <Property name=""SpawnData"">
+        <Property name=""AsteroidBelt"" value=""GcSpacePoiTypeSpawnData"">
+          <Property name=""SpawnCountWeights"">
+            <Property name=""SpawnCountWeights"" value=""0"" _index=""0"" />
+            <Property name=""SpawnCountWeights"" value=""65"" _index=""1"" />
+            <Property name=""SpawnCountWeights"" value=""30"" _index=""2"" />
+            <Property name=""SpawnCountWeights"" value=""5"" _index=""3"" />
+          </Property>
+          <Property name=""NumForcedHiddenExtras"" value=""0"" />
+        </Property>
+        <Property name=""Hulk"" value=""GcSpacePoiTypeSpawnData"">
+          <Property name=""SpawnCountWeights"">
+            <Property name=""SpawnCountWeights"" value=""60"" _index=""0"" />
+            <Property name=""SpawnCountWeights"" value=""20"" _index=""1"" />
+            <Property name=""SpawnCountWeights"" value=""5"" _index=""2"" />
+            <Property name=""SpawnCountWeights"" value=""1"" _index=""3"" />
+          </Property>
+          <Property name=""NumForcedHiddenExtras"" value=""2"" />
+        </Property>
+        <Property name=""OutpostSlime"" value=""GcSpacePoiTypeSpawnData"">
+          <Property name=""SpawnCountWeights"">
+            <Property name=""SpawnCountWeights"" value=""80"" _index=""0"" />
+            <Property name=""SpawnCountWeights"" value=""20"" _index=""1"" />
+          </Property>
+          <Property name=""NumForcedHiddenExtras"" value=""1"" />
+          <Property name=""AllowedInAbandonedSystem"" value=""false"" />
+          <Property name=""AllowedInEmptySystem"" value=""false"" />
+        </Property>
+        <Property name=""BasePlatform_Ice"" value=""GcSpacePoiTypeSpawnData"">
+          <Property name=""SpawnCountWeights"">
+            <Property name=""SpawnCountWeights"" value=""70"" _index=""0"" />
+            <Property name=""SpawnCountWeights"" value=""30"" _index=""1"" />
+          </Property>
+          <Property name=""NumForcedHiddenExtras"" value=""2"" />
+        </Property>
+      </Property>
+    </Property>
+  </Property>
+  <Property name=""Items"">
+    <Property name=""Items"" value=""GcSpacePoiTableItem"" _id=""ASTEROIDBELT"">
+      <Property name=""Id"" value=""ASTEROIDBELT"" />
+      <Property name=""Type"" value=""GcSpacePoiType"">
+        <Property name=""SpacePoiType"" value=""AsteroidBelt"" />
+      </Property>
+      <Property name=""InitialDiscoveryLevel"" value=""GcSpacePoiDiscoveryLevel"">
+        <Property name=""SpacePoiDiscoveryLevel"" value=""Discovered"" />
+      </Property>
+    </Property>
+    <Property name=""Items"" value=""GcSpacePoiTableItem"" _id=""HULK"">
+      <Property name=""Id"" value=""HULK"" />
+      <Property name=""Type"" value=""GcSpacePoiType"">
+        <Property name=""SpacePoiType"" value=""Hulk"" />
+      </Property>
+      <Property name=""InitialDiscoveryLevel"" value=""GcSpacePoiDiscoveryLevel"">
+        <Property name=""SpacePoiDiscoveryLevel"" value=""Undiscovered"" />
+      </Property>
+    </Property>
+    <Property name=""Items"" value=""GcSpacePoiTableItem"" _id=""OUTPOST_SLIME"">
+      <Property name=""Id"" value=""OUTPOST_SLIME"" />
+      <Property name=""Type"" value=""GcSpacePoiType"">
+        <Property name=""SpacePoiType"" value=""OutpostSlime"" />
+      </Property>
+      <Property name=""InitialDiscoveryLevel"" value=""GcSpacePoiDiscoveryLevel"">
+        <Property name=""SpacePoiDiscoveryLevel"" value=""Undiscovered"" />
+      </Property>
+    </Property>
+    <Property name=""Items"" value=""GcSpacePoiTableItem"" _id=""BASE_ICE"">
+      <Property name=""Id"" value=""BASE_ICE"" />
+      <Property name=""Type"" value=""GcSpacePoiType"">
+        <Property name=""SpacePoiType"" value=""BasePlatform_Ice"" />
+      </Property>
+      <Property name=""InitialDiscoveryLevel"" value=""GcSpacePoiDiscoveryLevel"">
+        <Property name=""SpacePoiDiscoveryLevel"" value=""Discovered"" />
+      </Property>
+    </Property>
+  </Property>
+</Data>";
+
+            string file = Path.Combine(mbinDir, "spacepoitable.MXML");
+            File.WriteAllText(file, xml);
+            MxmlParser.ClearXmlCache();
+            MxmlParser.ClearLocalisationCache();
+
+            var types = Parsers.ParseSpacePoiTable(file);
+
+            Assert.Equal(4, types.Count);
+
+            // Generation order, count ranges, extras and initial levels.
+            Assert.Equal("AsteroidBelt", types[0]["Type"]);
+            Assert.Equal(1, types[0]["MinCount"]);
+            Assert.Equal(3, types[0]["MaxCount"]);
+            Assert.Equal(0, types[0]["ForcedHiddenExtras"]);
+            Assert.Equal("Discovered", types[0]["NormalInitialLevel"]);
+            Assert.Equal(true, types[0]["AllowedInAbandonedSystem"]);
+            Assert.Equal("UI_SPACEPOI_TYPE_ASTEROIDBELT", types[0]["NameLocKey"]);
+
+            Assert.Equal("Hulk", types[1]["Type"]);
+            Assert.Equal(0, types[1]["MinCount"]);
+            Assert.Equal(3, types[1]["MaxCount"]);
+            Assert.Equal(2, types[1]["ForcedHiddenExtras"]);
+            Assert.Equal("Undiscovered", types[1]["NormalInitialLevel"]);
+            Assert.Equal("UI_SPACEPOI_TYPE_HULK", types[1]["NameLocKey"]);
+            Assert.Equal("Space Hulk", types[1]["Name"]);
+
+            Assert.Equal("OutpostSlime", types[2]["Type"]);
+            Assert.Equal(0, types[2]["MinCount"]);
+            Assert.Equal(1, types[2]["MaxCount"]);
+            Assert.Equal(1, types[2]["ForcedHiddenExtras"]);
+            Assert.Equal("Undiscovered", types[2]["NormalInitialLevel"]);
+            Assert.Equal(false, types[2]["AllowedInAbandonedSystem"]);
+            Assert.Equal(false, types[2]["AllowedInEmptySystem"]);
+            Assert.Equal("UI_SPACEPOI_TYPE_OUTPOST_SLIME", types[2]["NameLocKey"]);
+            Assert.Equal("Infested Outpost", types[2]["Name"]);
+
+            Assert.Equal("BasePlatform_Ice", types[3]["Type"]);
+            Assert.Equal(0, types[3]["MinCount"]);
+            Assert.Equal(1, types[3]["MaxCount"]);
+            Assert.Equal(2, types[3]["ForcedHiddenExtras"]);
+            Assert.Equal("Discovered", types[3]["NormalInitialLevel"]);
+            Assert.Equal("UI_SPACEPOI_TYPE_BASEPLATFORM_I", types[3]["NameLocKey"]);
+            Assert.Equal("Habitable Comet Fragment", types[3]["Name"]);
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void ParseSpacePoiTable_NoSpawnData_ReturnsEmptyList()
+    {
+        string tmpDir = CreateTempDir();
+        try
+        {
+            string mbinDir = Path.Combine(tmpDir, "mbin");
+            Directory.CreateDirectory(mbinDir);
+            string xml = @"<?xml version=""1.0"" encoding=""utf-8""?>
+<Data template=""cGcSpacePoiTable"">
+  <Property name=""GenerationData"">
+    <Property name=""GenerationData"" value=""GcSpacePoiGenerationData"" _index=""0"">
+      <Property name=""GenerationVersion"" value=""0"" />
+    </Property>
+  </Property>
+</Data>";
+
+            string file = Path.Combine(mbinDir, "spacepoitable.MXML");
+            File.WriteAllText(file, xml);
+            MxmlParser.ClearXmlCache();
+            MxmlParser.ClearLocalisationCache();
+
+            var types = Parsers.ParseSpacePoiTable(file);
+            Assert.Empty(types);
         }
         finally
         {

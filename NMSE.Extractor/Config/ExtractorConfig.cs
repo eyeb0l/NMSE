@@ -41,8 +41,11 @@ public static class ExtractorConfig
     };
 
     /// <summary>
-    /// Base stems for locale MXML/MBIN files. Each language has one file per stem,
-    /// e.g. "nms_loc1" -> nms_loc1_english.MXML, nms_loc1_french.MXML, etc.
+    /// Base stems for the locale MXML/MBIN files that shipped up to update 3.
+    /// These are only used as the known baseline for missing-file warnings; actual
+    /// locale extraction is wildcarded and locale loading enumerates whatever the
+    /// game provides, so newer language tables (for example Cosmos additions) are
+    /// picked up automatically.
     /// </summary>
     public static readonly string[] LocaleFileStems =
     [
@@ -51,13 +54,36 @@ public static class ExtractorConfig
     ];
 
     /// <summary>
-    /// Returns the locale MXML file names for a given NMS language name.
-    /// e.g. GetLocaleMxmlFiles("Japanese") -> ["nms_loc1_japanese.MXML", "nms_loc4_japanese.MXML", …]
+    /// Returns the known baseline locale MXML file names for a given NMS language name.
+    /// Used for optional-file warnings only; use the directory overload to enumerate
+    /// what was actually extracted.
+    /// e.g. GetLocaleMxmlFiles("Japanese") -> ["nms_loc1_japanese.MXML", "nms_loc4_japanese.MXML", ...]
     /// </summary>
     public static string[] GetLocaleMxmlFiles(string nmsLanguageName)
     {
         string suffix = nmsLanguageName.ToLowerInvariant();
         return LocaleFileStems.Select(stem => $"{stem}_{suffix}.MXML").ToArray();
+    }
+
+    /// <summary>
+    /// Enumerates every extracted locale MXML for a language in the given mbin
+    /// directory (for example nms_loc1_english.MXML, nms_update3_english.MXML and
+    /// any newer language tables such as Cosmos additions).
+    /// </summary>
+    /// <param name="mbinDir">Directory containing the converted MXML files.</param>
+    /// <param name="nmsLanguageName">NMS language property name (e.g. "English").</param>
+    /// <returns>The matching MXML file names in a stable order.</returns>
+    public static string[] GetLocaleMxmlFiles(string mbinDir, string nmsLanguageName)
+    {
+        if (string.IsNullOrEmpty(mbinDir) || !Directory.Exists(mbinDir))
+            return [];
+
+        string suffix = nmsLanguageName.ToLowerInvariant();
+        return Directory.EnumerateFiles(mbinDir, $"nms_*_{suffix}.MXML", SearchOption.TopDirectoryOnly)
+            .Select(path => Path.GetFileName(path) ?? "")
+            .Where(name => name.Length > 0)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     /// <summary>
@@ -82,6 +108,7 @@ public static class ExtractorConfig
         "*REALITY/TABLES/UNLOCKABLETWITCHREWARDS.mbin",
         "*REALITY/TABLES/UNLOCKABLEPLATFORMREWARDS.mbin",
         "*SIMULATION/ECOSYSTEM/peteggtraitmodifieroverridetable.mbin",
+        "*SIMULATION/SOLARSYSTEM/SPACEPOI/SPACEPOITABLE.mbin",
         "*GAMESTATE/PLAYERDATA/PLAYERTITLEDATA.mbin",
         "*REALITY/TABLES/FRIGATETRAITTABLE.mbin",
         "*REALITY/TABLES/SETTLEMENTPERKSTABLE.mbin",
@@ -95,14 +122,23 @@ public static class ExtractorConfig
         "*SIMULATION/ECOSYSTEM/creaturedatatable.mbin",
         "*SIMULATION/ECOSYSTEM/robotdatatable.mbin",
         "*SIMULATION/ECOSYSTEM/creaturefilenametable.mbin",
+        "*REALITY/catalogue.mbin",
+        "*REALITY/cataloguebuilding.mbin",
+        "*REALITY/cataloguecrafting.mbin",
+        "*REALITY/cataloguematerials.mbin",
+        "*REALITY/cataloguerecipes.mbin",
+        "*REALITY/cataloguewonders.mbin",
     ];
 
     /// <summary>
-    /// Locale MBIN filters using wildcards to capture all language variants.
-    /// e.g. "*LANGUAGE/nms_loc1_*.mbin" matches nms_loc1_english, nms_loc1_french, etc.
+    /// Locale MBIN filters. Wildcarded so every language table shipped by the game
+    /// is extracted, including newer tables added after update 3 (e.g. Cosmos).
+    /// e.g. nms_loc1_english.mbin, nms_update3_japanese.mbin, any future nms_updateN_*.
     /// </summary>
     public static readonly string[] LocaleMbinFilters =
-        LocaleFileStems.Select(stem => $"*LANGUAGE/{stem}_*.mbin").ToArray();
+    [
+        "*LANGUAGE/nms_*.mbin",
+    ];
 
     /// <summary>
     /// Filters for GCGAMETABLEGLOBALS.mbin which lives at the root level of NMSARC.globals.pak.

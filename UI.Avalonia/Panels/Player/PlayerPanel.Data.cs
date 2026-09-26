@@ -14,6 +14,7 @@ namespace NMSE.UI.Avalonia.Panels.Player;
 
 public sealed partial class PlayerPanel
 {
+    private int _originalCurrentPresetIndex = -1;
     public void LoadData(JsonObject saveData)
     {
         ArgumentNullException.ThrowIfNull(saveData);
@@ -53,6 +54,7 @@ public sealed partial class PlayerPanel
             _accountName.Text = PlayerName;
             LoadOutfits(playerState);
             LoadDifficulty(playerState);
+            _originalCurrentPresetIndex = _currentPreset.SelectedIndex;
             LoadExpedition(saveData, playerState);
             LoadCoordinates(playerState, saveData);
             LoadSpaceBattle(playerState, saveData);
@@ -89,6 +91,11 @@ public sealed partial class PlayerPanel
             SetPreset(difficulty?.GetObject("Preset"), _currentPreset);
             SetPreset(difficulty?.GetObject("EasiestUsedPreset"), _easiestPreset);
             SetPreset(difficulty?.GetObject("HardestUsedPreset"), _hardestPreset);
+            if (_currentPreset.SelectedIndex >= 0 && _currentPreset.SelectedIndex != _originalCurrentPresetIndex)
+            {
+                MainStatsLogic.ApplyGameModeForPreset(saveData, DifficultyPresets[_currentPreset.SelectedIndex]);
+                _originalCurrentPresetIndex = _currentPreset.SelectedIndex;
+            }
         }
 
         if (_playerState.SelectedIndex >= 0 && _playerState.SelectedIndex < CoordinateHelper.PlayerStates.Length)

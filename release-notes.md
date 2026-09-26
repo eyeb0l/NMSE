@@ -1,6 +1,49 @@
-## NMSE — No Man's Save Editor v1.2.23
+## NMSE - No Man's Save Editor v1.3.16
 
 ### Changelog
+
+_**It's another pretty big one with a lot going on under the hood.**_
+
+Happy NMS 10th Anniversary everyone! 🥳
+(Special hello to all the Project Skyscraper Operators out there 😉)
+
+#### Features:
+
+- **DB and mappings updated for Game Update 7.03 (Cosmos).**
+    - Adds all the new items, rewards, tools, ships, parts, etc. from the update and expedition.
+- Add new items types (such as space station buildables) to the Inventory item picker system.
+- Added support for Space Station ownership acceleration.
+- Added support for Space Station bases and Space bases.
+- Added support for Space POI system:
+    - Note: There is an algorithm involved in unpacking the data used for this and NMSE captures it on first load of a save. This means that the earlier the system is in exploration, the more accurate NMSE can resolve the POI types to the slots. Even if it can't identify it (not enough pattern info), it can still change the states without issue.
+    - Makes Space POIs determinable.
+    - Makes Space POI state able to be changed (Hidden, Undiscovered, Discovered, Complete) - they can never be changed to lower than their starting state (so no hiding the stars!).
+- Added 'Discoveries' library system.
+    - Creates a folder and stores discovery based info.
+    - Currently only used for Space POIs, but will be extended to collections and discoveries in the future.
+- Added support to the Raw JSON Editor for an isolated node view in split view mode (allows you to view only that nodes code). (per FR #118)
+- Added a Database Search panel that allows users to search the loaded item database without needing to load a save.
+    - Shows additional hidden data.
+    - Allows for wildcard searching.
+- Added Catalogue Completion system to the catalogue panel set, which allows you to manage the in game catalogue UI completion independent of unlocks.
+    - Adds Wonders, Collected Knowledge, Fossils, Raw Materials and Discovery Stats management.
+    - Extends cross support into the other Known* panels etc.
+- Improvements to some underlying code and some other cleanup tasks (non-user-facing).
+
+#### Bug Fixes:
+
+- Fix for Consistency Dialog and DataView trimming crashes. (per Issue #121 & Discord report)
+- Fix for Switch format save meta files. (per Discord report)
+- Fix for Preset game mode selection UI bug.
+- Fix for Xbox blob date/time race condition resulting in wrong date in UI. (per Issue #122)
+- Fix for themes not saving to config for reload. (per Issue #117)
+
+<br />
+
+<details>
+<summary>Previous Changelogs</summary>
+
+### Changelog 1.2.23
 
 #### Features:
 
@@ -18,9 +61,6 @@
 - Fix for "Save Transfer" from another platform to XBOX/XGP containers/blobs format so they are rebuilt properly.
 
 <br />
-
-<details>
-<summary>Previous Changelogs</summary>
 
 ### Changelog 1.2.7
 
@@ -616,9 +656,7 @@ This preview release contains critical bug fixes and additions for the following
 
 <br />
 
-_Documentation will need some future updates to cover these changes._
-
-**Thanks everyone for your help so far squashing launch bugs. Please keep the feedback and testing coming!**
+**Thanks to everyone for your support and for choosing this editor. Please keep the feedback coming!**
 
 Happy travels interlopers! 👨‍🚀
 **_-vector_cmdr_**
@@ -629,7 +667,7 @@ User guides are available from the [repo](https://github.com/vectorcmdr/NMSE/blo
 
 Download via **Assets** below (Windows (ZIP), Linux (AppImage) and macOS (DMG - requires Wine)).
 
-> Linux and macOS users can also run NMSE manually via Wine — see the [guides](https://github.com/vectorcmdr/NMSE#-cross-platform-via-wine).
+> Linux and macOS users can also run NMSE manually via Wine - see the [guides](https://github.com/vectorcmdr/NMSE#-cross-platform-via-wine).
 
 > 🛡️ VirusTotal scans for peace of mind are pending [here](#): pending...
 

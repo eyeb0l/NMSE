@@ -284,7 +284,7 @@ public class UpdateServiceTests
         Assert.NotNull(notes);
         Assert.Contains("f\u00FCr B\u00FCg", notes);
         Assert.Contains("\u00E9l\u00E9ment", notes);
-        Assert.Contains("\U0001F680", notes); // 🚀 rocket emoji (SMP codepoint)
+        Assert.Contains("\U0001F680", notes); // rocket emoji (SMP codepoint)
     }
 
     // CleanupOldExeIfPresent
@@ -642,7 +642,7 @@ public class BuildRtfWithIssueLinksTests
     [Fact]
     public void BuildRtfWithIssueLinks_HashInMiddleOfWord_NotTreatedAsRef()
     {
-        // "#1test" - word-char after digits — must not produce a hyperlink field.
+        // "#1test" - word-char after digits - must not produce a hyperlink field.
         string result = UpdateService.BuildRtfWithIssueLinks("tag v#1test");
         Assert.DoesNotContain("HYPERLINK", result);
     }

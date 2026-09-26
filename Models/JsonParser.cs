@@ -255,12 +255,12 @@ public static class JsonParser
                         // The NMS game engine stores every non-ASCII character as a raw
                         // UTF-8 multi-byte sequence inside its Latin-1-encoded JSON.
                         // This includes the Latin-1 supplement range (U+0080-U+00FF):
-                        // e.g. É (U+00C9) must be emitted as bytes 0xC3 0x89, not as the
+                        // e.g. U+00C9 must be emitted as bytes 0xC3 0x89, not as the
                         // single byte 0xC9.  Emitting a single Latin-1 byte for U+0080-U+00FF
                         // was the bug that silently corrupted accented/French names when the
                         // StringBuilder output was passed to Latin1.GetBytes() on save.
                         // Writing \uXXXX escapes would break NMSSaveEditor.jar (only accepts
-                        // \u values ≤ 255), so raw UTF-8 bytes are the correct form here.
+                        // \u values <= 255), so raw UTF-8 bytes are the correct form here.
                         AppendUtf8Bytes(sb, c);
                     }
                     else
@@ -354,6 +354,20 @@ public static class JsonParser
         }
         sb.Append('"');
     }
+
+    /// <summary>
+    /// Escapes and quotes a string using the same rules as JSON serialization.
+    /// Used when building single-property snippet text for the isolated node editor.
+    /// </summary>
+    /// <param name="value">The raw string to quote.</param>
+    /// <returns>The quoted JSON string.</returns>
+    internal static string QuoteString(string value)
+    {
+        var sb = new StringBuilder(value.Length + 2);
+        AppendQuotedString(sb, value);
+        return sb.ToString();
+    }
+
     // PARSING
 
     /// <summary>
@@ -640,7 +654,7 @@ public static class JsonParser
             }
 
             // If any raw high bytes (0x80-0xFF) were found, the string may be either:
-            //   (a) UTF-8 encoded text (e.g. Greek λ, CJK characters, Cyrillic, etc.)
+            //   (a) UTF-8 encoded text (e.g. Greek, CJK, Cyrillic characters, etc.)
             //       that was read through Latin-1 encoding, OR
             //   (b) genuine binary data (e.g. TechPack payloads).
             // Distinguish by checking whether the bytes form a valid UTF-8 sequence.

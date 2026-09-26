@@ -178,7 +178,7 @@ internal static class FrigateLogic
     };
 
     /// <summary>
-    /// Adjusts a frigate's traits (slots 1–4) to achieve the requested class grade.
+    /// Adjusts a frigate's traits (slots 1-4) to achieve the requested class grade.
     /// <para>
     /// The in-game class is determined entirely by the net trait score
     /// (<see cref="ComputeClassFromTraits"/>), so changing class requires modifying traits.

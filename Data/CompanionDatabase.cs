@@ -197,9 +197,9 @@ public static class CompanionDatabase
                 ById.Clear();
                 foreach (var e in loaded) ById[e.Id] = e;
 
-                // Build reverse-lookup from descriptor → variant across all creatures.
+                // Build reverse-lookup from descriptor -> variant across all creatures.
                 // This allows creatures whose own entry has no variant data (e.g. HERMITCRAB)
-                // to resolve accessories via their part descriptors (e.g. _CRABSHELL_02 →
+                // to resolve accessories via their part descriptors (e.g. _CRABSHELL_02 ->
                 // SPIDER's variant with LEFT+RIGHT groups).
                 // TryAdd keeps the first-encountered variant for a given descriptor.
                 // In practice each descriptor is unique to one creature, but if duplicates
@@ -640,7 +640,7 @@ public static class CompanionAccessoryDatabase
     /// <para>
     /// When the creature's own entry has accessory variant data, uses the first variant
     /// with groups as the representative layout. When the creature's entry has no variant
-    /// data (e.g. HERMITCRAB), falls back to searching the global descriptor→variant
+    /// data (e.g. HERMITCRAB), falls back to searching the global descriptor->variant
     /// reverse index using the companion's part <paramref name="descriptors"/>.
     /// This handles cases where a creature type shares a rig with another type
     /// (e.g. HERMITCRAB uses SPIDER's <c>_CRABSHELL_*</c> variants).
@@ -662,7 +662,7 @@ public static class CompanionAccessoryDatabase
 
         if (entry.AccessoryVariants != null && entry.AccessoryVariants.Count > 0)
         {
-            // Creature has its own variant data — use the first variant with groups.
+            // Creature has its own variant data - use the first variant with groups.
             var firstWithGroups = entry.AccessoryVariants
                 .FirstOrDefault(v => v.AccessoryGroups.Count > 0);
             if (firstWithGroups != null)

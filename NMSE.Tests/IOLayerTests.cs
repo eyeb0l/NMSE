@@ -413,15 +413,15 @@ public class IOLayerTests
         var commonState = data.GetObject("CommonStateData");
         Assert.NotNull(commonState);
 
-        // The save name contains Greek λ (U+03BB) and Latin Ŧ (U+0166).
+        // The save name contains Greek U+03BB and Latin U+0166 characters.
         // These are stored as raw UTF-8 bytes in the save file and must be
         // decoded as a Unicode string, not misclassified as BinaryData.
         var rawName = commonState!.Get("SaveName");
         Assert.IsType<string>(rawName);
 
         string name = commonState.GetString("SaveName")!;
-        Assert.Contains("\u03BB", name); // λ
-        Assert.Contains("\u0166", name); // Ŧ
+        Assert.Contains("\u03BB", name); // Greek lambda
+        Assert.Contains("\u0166", name); // Latin T with stroke
         Assert.Contains("Breach", name);
     }
 

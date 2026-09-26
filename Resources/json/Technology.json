@@ -2589,6 +2589,94 @@
 		"Slug": "technology/FISH_SKIFF"
 	},
 	{
+		"Id": "SPIDERBRAIN",
+		"Icon": "SPIDERBRAIN.png",
+		"IconPath": "textures/ui/frontend/icons/technology/tech.spiderbrain.dds",
+		"Name": "[?] Spider Brain",
+		"Name_LocStr": null,
+		"NameLower": null,
+		"NameLower_LocStr": null,
+		"Group": "Sentinel Technology",
+		"Subtitle_LocStr": null,
+		"Description": null,
+		"Description_LocStr": null,
+		"HintStart": null,
+		"HintEnd": null,
+		"DamagedDescription": null,
+		"BaseValueUnits": 1,
+		"CurrencyType": "None",
+		"Level": 1,
+		"Value": 10.0,
+		"Colour": "095C77",
+		"Usages": [
+			"HasDevProperties"
+		],
+		"BlueprintCost": 1,
+		"BlueprintCostType": "Nanites",
+		"BlueprintSource": 0,
+		"RequiredItems": [
+			{
+				"Id": "MICROCHIP",
+				"Quantity": 1
+			},
+			{
+				"Id": "DRONE_SHARD",
+				"Quantity": 1
+			}
+		],
+		"StatBonuses": [
+			{
+				"Name": "Protection",
+				"LocaleKeyTemplate": "enabled",
+				"Image": "protection",
+				"Value": "0"
+			}
+		],
+		"ConsumableRewardTexts": [],
+		"Category": "Suit",
+		"Category_LocStr": null,
+		"Rarity": "Impossible",
+		"Teach": "true",
+		"Chargeable": false,
+		"ChargeAmount": 100,
+		"ChargeType": "Earth",
+		"ChargeBy": [],
+		"ChargeMultiplier": 1.0,
+		"BuildFullyCharged": true,
+		"UsesAmmo": false,
+		"AmmoId": null,
+		"PrimaryItem": "false",
+		"Upgrade": false,
+		"Core": false,
+		"RepairTech": false,
+		"Procedural": false,
+		"BrokenSlotTech": "false",
+		"ParentTechId": null,
+		"RequiredTech": null,
+		"RequiredLevel": 0,
+		"FocusLocator": null,
+		"UpgradeColour": "FFFFFF",
+		"LinkColour": "3399FF",
+		"RewardGroup": null,
+		"PriceModifiers": {
+			"SpaceStationMarkup": 0.0,
+			"LowPriceMod": 0.0,
+			"HighPriceMod": 0.0,
+			"BuyBaseMarkup": 0.0,
+			"BuyMarkupMod": 0.0
+		},
+		"RequiredRank": 3,
+		"DispensingRace": "Explorers",
+		"FragmentCost": 1,
+		"TechShopRarity": null,
+		"WikiEnabled": true,
+		"NeverPinnable": false,
+		"IsTemplate": false,
+		"ExclusivePrimaryStat": false,
+		"SourceTable": "Technology",
+		"Slug": "technology/SPIDERBRAIN"
+	},
+	{
 		"Id": "FOOD_UNIT",
 		"Icon": "FOOD_UNIT.png",
 		"IconPath": "textures/ui/frontend/icons/technology/feeding.tube.dds",
@@ -5747,9 +5835,9 @@
 		],
 		"StatBonuses": [
 			{
-				"Name": "Unspecified",
+				"Name": "Freighter Fleet Boost",
 				"LocaleKeyTemplate": "enabled",
-				"Image": "enabled",
+				"Image": "boost",
 				"Value": "1"
 			}
 		],

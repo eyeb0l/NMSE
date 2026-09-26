@@ -117,7 +117,7 @@ public static class InventoryStackDatabase
     ///   <item>Substances: always 9999 (MaxAmountLimit)</item>
     ///   <item>Technology (chargeable): ChargeValue (charge capacity)</item>
     ///   <item>Technology (non-chargeable): 0 (installed, no amount bar)</item>
-    ///   <item>Products: <c>ProductMaxStorageMultiplier × MaxStackSize</c></item>
+    ///   <item>Products: <c>ProductMaxStorageMultiplier x MaxStackSize</c></item>
     /// </list>
     /// The <c>ProductMaxStorageMultiplier</c> varies by inventory group
     /// (10 for personal/ship, 20 for chest/freighter-cargo, etc.).
@@ -331,10 +331,13 @@ public static class InventoryStackDatabase
     ///     TechnologyCategory.</item>
     ///   <item>Cargo inventories accept everything except Technology.</item>
     ///   <item>General inventories accept all item types.</item>
-    ///   <item>Maintenance-category technology items are always excluded.</item>
-    ///   <item>Base building products that are not pickupable (neither CanPickUp
-    ///     nor IsTemporary) are excluded.</item>
+    ///   <item>Maintenance-category technology and Emote-category items are
+    ///     always excluded.  Creature eggs are products and are not excluded.</item>
     /// </list>
+    /// Base building products are treated like any other product.  The game's
+    /// <c>CanPickUp</c>/<c>IsTemporary</c> flags describe whether a placed structure
+    /// can be retrieved, not whether the item can be stored in an inventory, so they
+    /// do not affect this filter.
     /// </summary>
     /// <param name="item">The game item to check.</param>
     /// <param name="isTechOnly">True if the target inventory is tech-only.</param>
@@ -348,25 +351,17 @@ public static class InventoryStackDatabase
             && item.Category.Equals("Maintenance", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // Category Blacklist excludes Emote and CreatureEgg categories
-        if (item.Category.Equals("Emote", StringComparison.OrdinalIgnoreCase)
-            || item.Category.Equals("CreatureEgg", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        // CanPickUp excludes non-pickupable base building products.
-        // Base buildings (ItemType == "Buildings") can only be added if they
-        // are temporary (IsTemporary) or explicitly pickupable (CanPickUp).
-        // Non-building products always pass this check.
-        if (invType == "Product"
-            && item.ItemType.Equals("Buildings", StringComparison.OrdinalIgnoreCase)
-            && !item.CanPickUp && !item.IsTemporary)
+        // Emote unlock items are not storable and stay blacklisted.  Creature eggs
+        // are ordinary products (ProductCategory "CreatureEgg") and must remain
+        // addable to cargo and general inventories.
+        if (item.Category.Equals("Emote", StringComparison.OrdinalIgnoreCase))
             return false;
 
         if (isTechOnly)
         {
             // Technology Module items (cargo-holdable fragments that deploy into
             // tech slots, e.g. U_SHIPSHIELD3) must never be placed directly into
-            // technology inventories — they belong in cargo and unpack via
+            // technology inventories - they belong in cargo and unpack via
             // DeploysInto.  Exclude them before the TechnologyCategory check,
             // which would otherwise let them pass because they carry a Category
             // value like "Weapon" or "Ship".

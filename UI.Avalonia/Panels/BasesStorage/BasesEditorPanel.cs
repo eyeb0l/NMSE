@@ -125,6 +125,8 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
 
     private BaseListItem? SelectedBase => _baseList.SelectedItem as BaseListItem;
 
+    public void SelectBase(int dataIndex) => _baseList.SelectedItem = _baseItems.FirstOrDefault(item => item.DataIndex == dataIndex);
+
     public void LoadData(JsonObject saveData)
     {
         _loading = true;
@@ -136,14 +138,16 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
             JsonArray? bases = _playerState?.GetArray("PersistentPlayerBases");
             if (bases != null) for (int i = 0; i < bases.Length; i++)
             {
-                JsonObject value = bases.GetObject(i); string type = value.GetObject("BaseType")?.GetString("PersistentBaseTypes") ?? value.GetString("BaseType") ?? string.Empty;
-                bool isHome = type.Equals("HomePlanetBase", StringComparison.OrdinalIgnoreCase);
-                bool isFreighter = type.Equals("FreighterBase", StringComparison.OrdinalIgnoreCase);
-                if ((isHome || isFreighter) && TryInt(value, "BaseVersion") >= 3)
+                JsonObject value = bases.GetObject(i);
+                var kind = SpaceStationLogic.GetBaseKind(value);
+                bool isFreighter = kind == SpaceStationLogic.BaseKind.Freighter;
+                if (kind != SpaceStationLogic.BaseKind.Other && TryInt(value, "BaseVersion") >= 3)
                 {
                     string name = isFreighter
                         ? _playerState?.GetString("PlayerFreighterName") ?? UiStrings.Format("base.fallback_base_name", i + 1)
                         : value.GetString("Name") ?? UiStrings.Format("base.fallback_base_name", i + 1);
+                    if (kind == SpaceStationLogic.BaseKind.Corvette && _playerState != null)
+                        name = SpaceStationLogic.ResolveCorvetteBaseName(_playerState, value) ?? name;
                     _baseItems.Add(new BaseListItem(name, value, i, isFreighter));
                 }
             }
@@ -188,7 +192,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
         _loading = true;
         try
         {
-            JsonObject value = item.Data; _name.Text = item.IsFreighterBase ? _playerState?.GetString("PlayerFreighterName") ?? item.DisplayName : value.GetString("Name") ?? string.Empty; _name.IsReadOnly = item.IsFreighterBase; _name.IsEnabled = !item.IsFreighterBase; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
+            JsonObject value = item.Data; _name.Text = item.IsShipNamed ? item.DisplayName : value.GetString("Name") ?? string.Empty; _name.IsReadOnly = item.IsShipNamed; _name.IsEnabled = !item.IsShipNamed; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
             ReadVector(value.GetArray("Position"), _position); ReadVector(value.GetArray("Forward"), _forward); _address.Text = Scalar(value.Get("GalacticAddress"));
             _galaxy.Text = Scalar(value.Get("Galaxy") ?? value.Get("RealityIndex")); _timestamp.Text = Scalar(value.Get("Timestamp")); _ownerTimestamp.Text = Scalar(value.GetObject("Owner")?.Get("TS")); _version.NumericValue = TryInt(value, "BaseVersion");
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -206,7 +210,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
     private void CommitSelectedBase(bool force = false)
     {
         if ((_loading && !force) || SelectedBase is not { } item) return; JsonObject value = item.Data;
-        string newName = _name.Text?.Trim() ?? string.Empty; if (!item.IsFreighterBase && newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
+        string newName = _name.Text?.Trim() ?? string.Empty; if (!item.IsShipNamed && newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
         WriteVector(value.GetArray("Position"), _position); WriteVector(value.GetArray("Forward"), _forward); SetScalar(value, "GalacticAddress", _address.Text);
         string galaxyKey = value.Contains("Galaxy") ? "Galaxy" : "RealityIndex"; SetScalar(value, galaxyKey, _galaxy.Text); SetScalar(value, "Timestamp", _timestamp.Text);
         if (value.GetObject("Owner") is { } owner) SetScalar(owner, "TS", _ownerTimestamp.Text); _version.TryCommit(); RawNumberGuard.SetInt(value, "BaseVersion", (int)(_version.NumericValue ?? 0));
@@ -265,7 +269,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
 
     private async Task MoveBaseComputerAsync()
     {
-        if (SelectedBase is not { IsFreighterBase: false } item) return;
+        if (SelectedBase is not { IsPlanetary: true } item) return;
         if (_objectList.SelectedItem is not BaseObjectItem target || target.ObjectId == "^BASE_FLAG") { await ShowMessageAsync(UiStrings.Get("base.move_basecomp_title"), UiStrings.Get("base.move_basecomp_no_objects")); return; }
         JsonObject? flag = FindObject(item.Data.GetArray("Objects"), "^BASE_FLAG"); if (flag == null) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Get("base.move_basecomp_not_found")); return; }
         if (ReferenceEquals(flag, target.Data)) return;
@@ -313,7 +317,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
 
     private void UpdateEnabled()
     {
-        bool hasBase = SelectedBase != null; bool isFreighter = SelectedBase?.IsFreighterBase == true; bool hasWorker = _worker.SelectedItem is NpcWorkerItem; _summon.IsEnabled = hasBase && hasWorker;
+        bool hasBase = SelectedBase != null; bool isFreighter = SelectedBase?.IsPlanetary != true; bool hasWorker = _worker.SelectedItem is NpcWorkerItem; _summon.IsEnabled = hasBase && hasWorker;
         foreach (Button button in new[] { _export, _import, _overwrite, _delete }) button.IsEnabled = hasBase;
         _clearTerrain.IsEnabled = hasBase && !isFreighter;
         _moveComputer.IsEnabled = hasBase && !isFreighter && _objectList.SelectedItem is BaseObjectItem { ObjectId: not "^BASE_FLAG" };

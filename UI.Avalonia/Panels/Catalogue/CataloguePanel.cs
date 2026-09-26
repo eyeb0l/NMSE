@@ -31,6 +31,9 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
     private readonly TabItem[] _tabItems;
     private readonly TabItem _knownRecipesTab;
     private readonly TabItem _recipeBrowserTab;
+    private readonly CompletionPanel[] _completionPanels;
+    private readonly TabItem[] _completionTabs;
+    private static readonly string[] CompletionKeys = ["discovery.tab_wonders", "discovery.tab_knowledge", "discovery.group_fossils", "discovery.group_raw_materials", "discovery.tab_stats"];
 
     private readonly ObservableCollection<CatalogueItemRow> _techRows = [];
     private readonly ObservableCollection<CatalogueItemRow> _visibleTechRows = [];
@@ -134,7 +137,14 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
             new TabItem { Content = fishPage },
             new TabItem { Content = recipeTabs }
         ];
-        _tabs = new TabControl { ItemsSource = _tabItems };
+        _completionPanels = new[] { "wonders", "knowledge", "fossils", "materials", "stats" }.Select(kind => new CompletionPanel(kind, items)).ToArray();
+        _completionTabs = _completionPanels.Select(panel => new TabItem { Content = panel }).ToArray();
+        foreach (var panel in _completionPanels)
+        {
+            panel.DataModified += (_, _) => DataModified?.Invoke(this, EventArgs.Empty);
+            panel.ConfirmAsync = (title, message, token) => ConfirmAsync?.Invoke(title, message, token) ?? Task.FromResult(false);
+        }
+        _tabs = new TabControl { ItemsSource = _tabItems.Concat(_completionTabs).ToArray() };
         Content = _tabs;
         ApplyUiLocalisation();
     }
@@ -155,11 +165,17 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
             LoadLocations(_playerState);
             LoadFish(_playerState);
             LoadKnownRecipes(_playerState);
+            foreach (var panel in _completionPanels) panel.LoadData(saveData);
         }
         finally { _loading = false; }
     }
 
     public void ReloadData(JsonObject saveData) => LoadData(saveData);
+
+    public void SetAccountData(JsonObject? accountData)
+    {
+        foreach (var panel in _completionPanels) panel.SetAccountData(accountData);
+    }
 
     public void SaveData(JsonObject saveData)
     {
@@ -184,6 +200,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
     /// <summary>Releases heavy catalogue rows and save graph references until the next LoadData call.</summary>
     public void PurgeData()
     {
+        foreach (var panel in _completionPanels) panel.LoadData(null);
         Clear(_techRows, _visibleTechRows);
         Clear(_productRows, _visibleProductRows);
         Clear(_specialRows, _visibleSpecialRows);
@@ -203,6 +220,11 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
 
     public void ApplyUiLocalisation()
     {
+        for (int i = 0; i < _completionTabs.Length; i++)
+        {
+            _completionTabs[i].Header = UiStrings.Get(CompletionKeys[i]);
+            _completionPanels[i].ApplyUiLocalisation();
+        }
         string[] tabKeys =
         [
             "discovery.tab_tech", "discovery.tab_products", "discovery.tab_specials", "discovery.tab_words",

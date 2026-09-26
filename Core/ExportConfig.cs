@@ -60,24 +60,24 @@ public class ExportConfig
 
     // Naming Templates
     // Template variables:
-    //   {player_name}    – player name
-    //   {ship_name}      – ship / freighter name
-    //   {multitool_name} – multitool name
-    //   {type}           – type display name
-    //   {class}          – class letter (S/A/B/C)
-    //   {race}           – NPC race
-    //   {rank}           – pilot rank
-    //   {seed}           – seed value
-    //   {name}           – generic name
-    //   {species}        – companion species
-    //   {creature_seed}  – companion creature seed
-    //   {vehicle_name}   – exocraft name
-    //   {vehicle_type}   – exocraft type
-    //   {base_name}      – base name
-    //   {chest_number}   – chest slot number
-    //   {timestamp}      – epoch timestamp
-    //   {frigate_name}   – frigate name
-    //   {settlement_name} – settlement name
+    //   {player_name}    - player name
+    //   {ship_name}      - ship / freighter name
+    //   {multitool_name} - multitool name
+    //   {type}           - type display name
+    //   {class}          - class letter (S/A/B/C)
+    //   {race}           - NPC race
+    //   {rank}           - pilot rank
+    //   {seed}           - seed value
+    //   {name}           - generic name
+    //   {species}        - companion species
+    //   {creature_seed}  - companion creature seed
+    //   {vehicle_name}   - exocraft name
+    //   {vehicle_type}   - exocraft type
+    //   {base_name}      - base name
+    //   {chest_number}   - chest slot number
+    //   {timestamp}      - epoch timestamp
+    //   {frigate_name}   - frigate name
+    //   {settlement_name} - settlement name
 
     /// <summary>Naming template for exosuit cargo exports.</summary>
     public string ExosuitCargoTemplate { get; set; } = "{player_name}_cargo";

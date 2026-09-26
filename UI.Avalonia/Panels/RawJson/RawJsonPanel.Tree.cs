@@ -77,6 +77,7 @@ public partial class RawJsonPanel
     private void OnContextMenuOpening(object? sender, CancelEventArgs e)
     {
         JsonTreeNode? node = SelectedNode;
+        IsolateMenuItem.IsVisible = SplitIsolateMenuItem.IsVisible = node is { IsPlaceholder: false };
         EditMenuItem.IsVisible = node is { IsContainer: false, IsPlaceholder: false };
         AddPropertyMenuItem.IsVisible = node?.Value is JsonObject;
         AddArrayItemMenuItem.IsVisible = node?.Value is JsonArray;
@@ -124,6 +125,39 @@ public partial class RawJsonPanel
         RecordAction(new JsonValueAction(node.ParentContainer, node.Key, oldValue, parsed));
         RebuildTreesPreservingPath(GetPath(node));
         SetStatus(UiStrings.Get("raw_json.value_modified"), Brushes.DarkOrange);
+    }
+
+    private async void OnIsolateNode(object? sender, RoutedEventArgs e)
+    {
+        if (!PrepareTreeMutation() || SelectedNode is not { IsPlaceholder: false } node || OwnerWindow is not { } owner) return;
+        string snippet = RawJsonLogic.SerializeNodeSnippet(node.ParentContainer is JsonObject ? node.Key : null, node.Value);
+        await JsonDialogs.ShowSnippetAsync(owner, snippet, text => ApplyNodeSnippet(node, text));
+    }
+
+    internal void ApplyNodeSnippet(JsonTreeNode node, string text)
+    {
+        if (node.IsRoot && ActiveData is { } root)
+        {
+            byte[] before = JsonRootAction.Compress(RawJsonLogic.ToDisplayString(root));
+            RawJsonLogic.ApplyRootSnippet(root, text);
+            _undoStack.Clear(); _redoStack.Clear();
+            RecordAction(new JsonRootAction(root, before, JsonRootAction.Compress(RawJsonLogic.ToDisplayString(root))));
+        }
+        else if (node.ParentContainer is JsonObject parent && node.Key is { } oldKey)
+        {
+            var (key, value) = RawJsonLogic.ParseObjectMemberSnippet(text);
+            if (key != oldKey && parent.Contains(key)) throw new FormatException(UiStrings.Format("raw_json.duplicate_key_msg", key));
+            object? old = parent.Get(oldKey);
+            parent.Rename(oldKey, key); parent.Set(key, value);
+            RecordAction(new JsonMemberAction(parent, oldKey, key, old, value));
+        }
+        else if (node.ParentContainer is JsonArray array && node.Key is { } arrayKey)
+        {
+            object? value = RawJsonLogic.ParseValueSnippet(text);
+            JsonValueAction.SetValue(array, arrayKey, value);
+            RecordAction(new JsonValueAction(array, arrayKey, node.Value, value));
+        }
+        RebuildTreesPreservingPath([]);
     }
 
     private async void OnAddProperty(object? sender, RoutedEventArgs e)

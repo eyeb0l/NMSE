@@ -448,7 +448,7 @@ internal static class SettlementLogic
     /// <returns>
     /// > = 0 : overwrite that index.
     /// -1 : append a new entry (spare capacity exists).
-    /// -2 : array full and no selection – caller must ask the user to choose.
+    /// -2 : array full and no selection - caller must ask the user to choose.
     /// </returns>
     internal static int FindImportTargetIndex(JsonArray settlements, int selectedDataIndex)
     {
@@ -560,27 +560,27 @@ internal static class SettlementLogic
     /// Decodes settlement BuildingStates int32 values as bit-flag composites.
     /// <para>Bit layout (verified against 29 empirical data points, int32 as canonical):</para>
     /// <list type="bullet">
-    /// <item>Bits 0–6 (7): Initial construction phase flags</item>
-    /// <item>Bits 7–9 (3): Reserved</item>
-    /// <item>Bits 10–19 (10): Upgrade construction sub-phase flags</item>
-    /// <item>Bits 20–25 (6): Tier progression (2 bits per B/A/S: Started + Confirmed)</item>
+    /// <item>Bits 0-6 (7): Initial construction phase flags</item>
+    /// <item>Bits 7-9 (3): Reserved</item>
+    /// <item>Bits 10-19 (10): Upgrade construction sub-phase flags</item>
+    /// <item>Bits 20-25 (6): Tier progression (2 bits per B/A/S: Started + Confirmed)</item>
     /// <item>Bit 26: Class system active</item>
     /// <item>Bit 27: B-class unveiled ("Fancy" visual)</item>
     /// <item>Bit 28: A-class unveiled</item>
     /// <item>Bit 29: S-class unveiled</item>
-    /// <item>Bits 30–31 (2): Unknown/Reserved</item>
+    /// <item>Bits 30-31 (2): Unknown/Reserved</item>
     /// </list>
     /// </summary>
     internal static class SettlementBuildingState
     {
         // --- Masks ---
-        /// <summary>Bits 0–6: seven initial construction phase flags.</summary>
+        /// <summary>Bits 0-6: seven initial construction phase flags.</summary>
         public const int InitConstructionMask = 0x0000_007F;
-        /// <summary>Bits 10–19: ten upgrade sub-phase flags.</summary>
+        /// <summary>Bits 10-19: ten upgrade sub-phase flags.</summary>
         public const int UpgradeProgressMask  = 0x000F_FC00;
-        /// <summary>Bits 20–25: six tier-progression bits (2 per B/A/S).</summary>
+        /// <summary>Bits 20-25: six tier-progression bits (2 per B/A/S).</summary>
         public const int TierProgressionMask  = 0x03F0_0000;
-        /// <summary>Bits 26–29: system/arrival flags.</summary>
+        /// <summary>Bits 26-29: system/arrival flags.</summary>
         public const int ArrivalFlagsMask     = 0x3C00_0000;
 
         // --- Bit positions ---
@@ -596,18 +596,18 @@ internal static class SettlementLogic
         public const int Bit_S_Arrived         = 29;
 
         // --- Bit-field region sizes ---
-        /// <summary>Number of initial construction phase bits (0–6).</summary>
+        /// <summary>Number of initial construction phase bits (0-6).</summary>
         public const int InitPhaseCount    = 7;
-        /// <summary>Number of upgrade sub-phase bits (10–19).</summary>
+        /// <summary>Number of upgrade sub-phase bits (10-19).</summary>
         public const int UpgradePhaseCount = 10;
-        /// <summary>Number of tier progression bits (20–25, 2 per B/A/S).</summary>
+        /// <summary>Number of tier progression bits (20-25, 2 per B/A/S).</summary>
         public const int TierBitCount      = 6;
-        /// <summary>Number of system/arrival flag bits (26–29).</summary>
+        /// <summary>Number of system/arrival flag bits (26-29).</summary>
         public const int FlagBitCount      = 4;
 
         public static bool IsEmpty(int state) => state == 0;
 
-        /// <summary>Returns true for the initial C-class construction phase values (bits 0–6 only, no higher bits).</summary>
+        /// <summary>Returns true for the initial C-class construction phase values (bits 0-6 only, no higher bits).</summary>
         public static bool IsInitialConstruction(int state) => state > 0 && state <= 0x7F && (state & ~InitConstructionMask) == 0;
 
         public static int GetInitConstruction(int state) => state & InitConstructionMask;
@@ -616,11 +616,11 @@ internal static class SettlementLogic
         public static int GetArrivalFlags(int state) => (state & ArrivalFlagsMask) >> 26;
         public static bool GetBit(int state, int bit) => ((state >> bit) & 1) != 0;
 
-        /// <summary>Count of set bits in the initial construction field (bits 0–6).</summary>
+        /// <summary>Count of set bits in the initial construction field (bits 0-6).</summary>
         public static int InitConstructionCount(int state) =>
             System.Numerics.BitOperations.PopCount((uint)(state & InitConstructionMask));
 
-        /// <summary>Count of set bits in the upgrade progress field (bits 10–19).</summary>
+        /// <summary>Count of set bits in the upgrade progress field (bits 10-19).</summary>
         public static int UpgradeProgressCount(int state) =>
             System.Numerics.BitOperations.PopCount((uint)(state & UpgradeProgressMask));
 

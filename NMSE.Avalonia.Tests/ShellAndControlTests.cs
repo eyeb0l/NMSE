@@ -23,13 +23,13 @@ namespace NMSE.Avalonia.Tests;
 public sealed class ShellAndControlTests
 {
     [AvaloniaFact]
-    public void MainWindow_ContainsTheFifteenCurrentTopLevelAreas()
+    public void MainWindow_ContainsTheSixteenCurrentTopLevelAreas()
     {
         var window = new MainWindow();
         var tabs = window.FindControl<TabControl>("MainTabs");
 
         Assert.NotNull(tabs);
-        Assert.Equal(15, tabs.ItemCount);
+        Assert.Equal(16, tabs.ItemCount);
         Assert.DoesNotContain(
             tabs.Items.OfType<TabItem>(),
             tab => string.Equals(tab.Header?.ToString(), "Multiplayer", StringComparison.OrdinalIgnoreCase));
@@ -48,7 +48,7 @@ public sealed class ShellAndControlTests
             "PlayerPanel", "ExosuitPanel", "MultitoolPanel", "StarshipPanel", "FleetPanel",
             "ExocraftPanel", "CompanionPanel", "BasesStoragePanel", "CataloguePanel",
             "MilestonePanel", "SettlementPanel", "ByteBeatPanel", "AccountRewardsPanel",
-            "ExportSettingsPanel", "RawJsonPanel",
+            "ExportSettingsPanel", "RawJsonPanel", "DatabaseSearchPanel",
         ];
         string[] actualPanelTypes = tabs.Items.OfType<TabItem>()
             .Select(tab => GetTabPanel(tab).GetType().Name)
@@ -69,9 +69,9 @@ public sealed class ShellAndControlTests
         for (int index = 0; index < tabs.ItemCount; index++)
         {
             var tab = (TabItem)tabs.Items[index]!;
-            if (index == 13)
+            if (index is 13 or 15)
             {
-                Assert.Equal("ExportSettingsPanel", tab.Content!.GetType().Name);
+                Assert.Equal(index == 13 ? "ExportSettingsPanel" : "DatabaseSearchPanel", tab.Content!.GetType().Name);
                 Assert.True(((Control)tab.Content).IsEnabled);
                 continue;
             }
@@ -87,7 +87,7 @@ public sealed class ShellAndControlTests
 
         for (int index = 0; index < tabs.ItemCount; index++)
         {
-            if (index == 13)
+            if (index is 13 or 15)
                 continue;
             var host = Assert.IsType<Grid>(((TabItem)tabs.Items[index]!).Content);
             Assert.True(host.Children[0].IsEnabled);

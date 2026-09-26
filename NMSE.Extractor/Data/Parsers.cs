@@ -1,4 +1,5 @@
 using NMSE.Extractor.Config;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -383,7 +384,15 @@ public static class Parsers
                 string subtitleKey = MxmlParser.GetPropertyValue(elem, "Subtitle");
                 string descKey = MxmlParser.GetPropertyValue(elem, "Description");
 
-                if (MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey, subtitleKey, descKey) >= 2) continue;
+                // Entries whose localisation keys are absent from the game files
+                // cannot resolve a name. Curated names keep the entry visible;
+                // official game strings win when a future update provides them.
+                bool isCurated = CuratedItemNames.TryGet(techId, out string curatedName, out string curatedGroup);
+                bool nameResolved = isCurated && MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey) == 0;
+                bool useCuratedName = isCurated && !nameResolved;
+
+                if (!isCurated &&
+                    MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey, subtitleKey, descKey) >= 2) continue;
 
                 var iconProp = elem.Descendants("Property").FirstOrDefault(e => e.Attribute("name")?.Value == "Icon");
                 string iconFilename = iconProp != null ? MxmlParser.GetPropertyValue(iconProp, "Filename") : "";
@@ -475,14 +484,14 @@ public static class Parsers
                     ["Id"] = techId,
                     ["Icon"] = $"{techId}.png",
                     ["IconPath"] = iconPath,
-                    ["Name"] = MxmlParser.Translate(nameKey, techId),
-                    ["Name_LocStr"] = NullIfEmpty(nameKey),
-                    ["NameLower"] = NullIfEmpty(MxmlParser.Translate(nameLowerKey, "")),
-                    ["NameLower_LocStr"] = NullIfEmpty(nameLowerKey),
-                    ["Group"] = MxmlParser.Translate(subtitleKey, ""),
-                    ["Subtitle_LocStr"] = NullIfEmpty(subtitleKey),
-                    ["Description"] = MxmlParser.Translate(descKey, ""),
-                    ["Description_LocStr"] = NullIfEmpty(descKey),
+                    ["Name"] = useCuratedName ? CuratedItemNames.Prefix + curatedName : MxmlParser.Translate(nameKey, techId),
+                    ["Name_LocStr"] = useCuratedName ? null : NullIfEmpty(nameKey),
+                    ["NameLower"] = useCuratedName ? null : NullIfEmpty(MxmlParser.Translate(nameLowerKey, "")),
+                    ["NameLower_LocStr"] = useCuratedName ? null : NullIfEmpty(nameLowerKey),
+                    ["Group"] = useCuratedName ? curatedGroup : MxmlParser.Translate(subtitleKey, ""),
+                    ["Subtitle_LocStr"] = useCuratedName ? null : NullIfEmpty(subtitleKey),
+                    ["Description"] = useCuratedName ? null : MxmlParser.Translate(descKey, ""),
+                    ["Description_LocStr"] = useCuratedName ? null : NullIfEmpty(descKey),
                     ["HintStart"] = NullIfEmpty(MxmlParser.Translate(hintStartKey, "")),
                     ["HintEnd"] = NullIfEmpty(MxmlParser.Translate(hintEndKey, "")),
                     ["DamagedDescription"] = NullIfEmpty(MxmlParser.Translate(damagedDescKey, "")),
@@ -1234,20 +1243,111 @@ public static class Parsers
     // BaseParts
     public static List<Dictionary<string, object?>> ParseBaseParts(string mxmlPath)
     {
-        var parts = ParseProducts(mxmlPath, includeSubtitleKey: true);
-        foreach (var part in parts)
-        {
-            string partId = part["Id"]?.ToString() ?? "";
-            string subtitleKey = part.GetValueOrDefault("SubtitleKey")?.ToString() ?? "";
-            if ((subtitleKey.Contains("SPACE", StringComparison.OrdinalIgnoreCase)) ||
-                (partId.Contains("FREI", StringComparison.OrdinalIgnoreCase)))
-            {
-                part["Group"] = "Freighter Interior Module";
-            }
-            part.Remove("SubtitleKey");
-        }
+        // The Group field comes from the product's translated Subtitle, matching
+        // every other product.  Do not override it from heuristics such as a
+        // "SPACE" substring in the localisation key: keys like UI_SPACE_BASE_SUB
+        // ("Orbital Platform Evaluation Device") are not freighter modules.
+        var parts = ParseProducts(mxmlPath);
         Console.WriteLine($"[OK] Parsed {parts.Count} base building parts");
         return parts;
+    }
+
+    // Space POI table
+    /// <summary>
+    /// Star map display name localisation keys for the GcSpacePoiType values whose key
+    /// suffix differs from the enum name. All other types use UI_SPACEPOI_TYPE_<TYPE>.
+    /// </summary>
+    private static readonly Dictionary<string, string> SpacePoiTypeNameKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["AbandonedFreighter"] = "UI_SPACEPOI_TYPE_AF",
+        ["SpaceWhale"] = "UI_SPACEPOI_TYPE_BIOFRIGATE",
+        ["BasePlatform_Ice"] = "UI_SPACEPOI_TYPE_BASEPLATFORM_I",
+        ["OutpostSlime"] = "UI_SPACEPOI_TYPE_OUTPOST_SLIME",
+    };
+
+    /// <summary>
+    /// Parses the space POI table into its generation order with each type's spawn count
+    /// range, forced hidden extras and initial discovery level. The editor uses this table
+    /// to work out which type each packed SpacePoiDiscoveries slot belongs to.
+    /// </summary>
+    public static List<Dictionary<string, object?>> ParseSpacePoiTable(string mxmlPath)
+    {
+        var root = MxmlParser.LoadXml(mxmlPath);
+        var localisation = MxmlParser.LoadLocalisation(Path.Combine(
+            Path.GetDirectoryName(Path.GetDirectoryName(mxmlPath))!, ExtractorConfig.JsonSubfolder));
+        var types = new List<Dictionary<string, object?>>();
+
+        // Initial discovery level per type, taken from the item definitions.
+        var initialLevels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var itemsProp = root.Descendants("Property").FirstOrDefault(e => e.Attribute("name")?.Value == "Items");
+        if (itemsProp != null)
+        {
+            foreach (var elem in itemsProp.Elements("Property").Where(e => e.Attribute("name")?.Value == "Items"))
+            {
+                string type = MxmlParser.GetNestedEnum(elem, "Type", "SpacePoiType");
+                string level = MxmlParser.GetNestedEnum(elem, "InitialDiscoveryLevel", "SpacePoiDiscoveryLevel");
+                if (!string.IsNullOrEmpty(type) && !string.IsNullOrEmpty(level))
+                    initialLevels.TryAdd(type, level);
+            }
+        }
+
+        // Generation order comes from the SpawnData property order.
+        var generationProp = root.Descendants("Property").FirstOrDefault(e => e.Attribute("name")?.Value == "GenerationData");
+        var spawnProp = generationProp?.Descendants("Property").FirstOrDefault(e => e.Attribute("name")?.Value == "SpawnData");
+        if (spawnProp != null)
+        {
+            foreach (var elem in spawnProp.Elements("Property").Where(e => e.Attribute("value")?.Value == "GcSpacePoiTypeSpawnData"))
+            {
+                string type = elem.Attribute("name")?.Value ?? "";
+                if (string.IsNullOrEmpty(type)) continue;
+
+                // Valid spawn counts are the weight indices with a non-zero weight.
+                var weightElem = elem.Descendants("Property").FirstOrDefault(e => e.Attribute("name")?.Value == "SpawnCountWeights");
+                int minCount = -1, maxCount = -1;
+                if (weightElem != null)
+                {
+                    foreach (var weight in weightElem.Elements("Property").Where(e => e.Attribute("name")?.Value == "SpawnCountWeights"))
+                    {
+                        int index = int.TryParse(weight.Attribute("_index")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) ? parsed : -1;
+                        int value = int.TryParse(weight.Attribute("value")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int weightValue) ? weightValue : 0;
+                        if (index < 0 || value <= 0) continue;
+                        if (minCount < 0 || index < minCount) minCount = index;
+                        if (index > maxCount) maxCount = index;
+                    }
+                }
+                if (minCount < 0) continue;
+
+                int extras = MxmlParser.ParseValue(MxmlParser.GetPropertyValue(elem, "NumForcedHiddenExtras", "0")) is int extraCount
+                    ? extraCount
+                    : 0;
+
+                // Some types never spawn in abandoned or empty systems (for example the
+                // Outpost is forbidden in abandoned systems). The inference needs these
+                // flags to explain sparse discovery values in such systems.
+                bool allowedAbandoned = MxmlParser.ParseValue(MxmlParser.GetPropertyValue(elem, "AllowedInAbandonedSystem", "true")) is true;
+                bool allowedEmpty = MxmlParser.ParseValue(MxmlParser.GetPropertyValue(elem, "AllowedInEmptySystem", "true")) is true;
+
+                string nameKey = SpacePoiTypeNameKeys.TryGetValue(type, out string? mapped)
+                    ? mapped
+                    : $"UI_SPACEPOI_TYPE_{type.ToUpperInvariant()}";
+
+                types.Add(new Dictionary<string, object?>
+                {
+                    ["Type"] = type,
+                    ["MinCount"] = minCount,
+                    ["MaxCount"] = maxCount,
+                    ["ForcedHiddenExtras"] = extras,
+                    ["NormalInitialLevel"] = initialLevels.GetValueOrDefault(type, "Hidden"),
+                    ["AllowedInAbandonedSystem"] = allowedAbandoned,
+                    ["AllowedInEmptySystem"] = allowedEmpty,
+                    ["NameLocKey"] = nameKey,
+                    ["Name"] = MxmlParser.Translate(nameKey, type),
+                });
+            }
+        }
+
+        Console.WriteLine($"[OK] Parsed space POI table: {types.Count} types, {initialLevels.Count} item types");
+        return types;
     }
 
     // ProceduralTech
@@ -2619,7 +2719,7 @@ public static class Parsers
                 paletteId.Equals("NULL", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // Read NumColours — the game stores only N distinct colours, but
+            // Read NumColours - the game stores only N distinct colours, but
             // the array may be padded with repeats to fill 64 slots.
             string numColoursValue = paletteElem.Elements("Property")
                 .Where(e => e.Attribute("name")?.Value == "NumColours")
@@ -2689,7 +2789,7 @@ public static class Parsers
     /// <summary>
     /// Parses customisationcolourpalettes.MXML and extracts all named paint palettes
     /// (excluding the NULL placeholder which has no colour names).
-    /// For each palette, only the active colour entries are returned — specifically the
+    /// For each palette, only the active colour entries are returned - specifically the
     /// first N entries that correspond to the TipText label count (the game fills unused
     /// slots with white 1,1,1,1).
     /// Each colour entry has its index, translated name (from TipText), and RGBA bytes.

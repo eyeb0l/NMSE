@@ -25,7 +25,16 @@ public static class ProductLookup
         string altDescriptionKey = MxmlParser.GetPropertyValue(item, "AltDescription");
         string hintKey = MxmlParser.GetPropertyValue(item, "Hint");
 
-        if (MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey, subtitleKey, descriptionKey) >= 2)
+        // Entries whose localisation keys are absent from the game files cannot
+        // resolve a name. Curated names (marked with CuratedItemNames.Prefix)
+        // keep the entry so the editor can still show and complete it; official
+        // game strings always win when a future update provides them.
+        bool isCurated = CuratedItemNames.TryGet(itemId, out string curatedName, out string curatedGroup);
+        bool nameResolved = isCurated && MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey) == 0;
+        bool useCuratedName = isCurated && !nameResolved;
+
+        if (!isCurated &&
+            MxmlParser.UnresolvedLocalisationKeyCount(localisation, nameKey, subtitleKey, descriptionKey) >= 2)
             return null;
 
         object baseValue = MxmlParser.ParseValue(MxmlParser.GetPropertyValue(item, "BaseValue", "0"));
@@ -119,14 +128,14 @@ public static class ProductLookup
         {
             ["Id"] = itemId,
             ["IconPath"] = iconPath,
-            ["Name"] = MxmlParser.Translate(nameKey, nameDefault),
-            ["Name_LocStr"] = NullIfEmpty(nameKey),
-            ["NameLower"] = !string.IsNullOrEmpty(nameLowerKey) ? MxmlParser.Translate(nameLowerKey, nameLowerKey) : null,
-            ["NameLower_LocStr"] = NullIfEmpty(nameLowerKey),
-            ["Group"] = MxmlParser.Translate(subtitleKey, groupDefault),
-            ["Subtitle_LocStr"] = NullIfEmpty(subtitleKey),
-            ["Description"] = MxmlParser.Translate(descriptionKey, descriptionDefault),
-            ["Description_LocStr"] = NullIfEmpty(descriptionKey),
+            ["Name"] = useCuratedName ? CuratedItemNames.Prefix + curatedName : MxmlParser.Translate(nameKey, nameDefault),
+            ["Name_LocStr"] = useCuratedName ? null : NullIfEmpty(nameKey),
+            ["NameLower"] = useCuratedName ? null : (!string.IsNullOrEmpty(nameLowerKey) ? MxmlParser.Translate(nameLowerKey, nameLowerKey) : null),
+            ["NameLower_LocStr"] = useCuratedName ? null : NullIfEmpty(nameLowerKey),
+            ["Group"] = useCuratedName ? curatedGroup : MxmlParser.Translate(subtitleKey, groupDefault),
+            ["Subtitle_LocStr"] = useCuratedName ? null : NullIfEmpty(subtitleKey),
+            ["Description"] = useCuratedName ? null : MxmlParser.Translate(descriptionKey, descriptionDefault),
+            ["Description_LocStr"] = useCuratedName ? null : NullIfEmpty(descriptionKey),
             ["AltDescription"] = !string.IsNullOrEmpty(altDescriptionKey) ? MxmlParser.Translate(altDescriptionKey, altDescriptionKey) : null,
             ["Hint"] = !string.IsNullOrEmpty(hintKey) ? MxmlParser.Translate(hintKey, hintKey) : null,
             ["BaseValueUnits"] = baseValue,

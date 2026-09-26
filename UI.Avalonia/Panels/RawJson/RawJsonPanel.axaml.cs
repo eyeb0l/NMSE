@@ -152,6 +152,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         FormatButton.Content = UiStrings.Get("raw_json.format");
         ValidateButton.Content = UiStrings.Get("raw_json.validate");
         EditMenuItem.Header = UiStrings.Get("raw_json.ctx_edit_value");
+        IsolateMenuItem.Header = SplitIsolateMenuItem.Header = UiStrings.Get("raw_json.isolate_node");
         AddPropertyMenuItem.Header = UiStrings.Get("raw_json.ctx_add_property");
         AddArrayItemMenuItem.Header = UiStrings.Get("raw_json.ctx_add_array_item");
         DeleteMenuItem.Header = UiStrings.Get("raw_json.ctx_delete");

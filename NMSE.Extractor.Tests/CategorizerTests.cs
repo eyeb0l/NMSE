@@ -9,6 +9,12 @@ public class CategorizerTests
         ["Id"] = id, ["Name"] = name, ["Group"] = group
     };
 
+    private static Dictionary<string, object?> MakeBuildingPartItem(string id, string name, string group) => new()
+    {
+        ["Id"] = id, ["Name"] = name, ["Group"] = group,
+        ["ProductCategory"] = "BuildingPart", ["SubstanceCategory"] = "BuildingPart"
+    };
+
     [Fact]
     public void CategorizeItem_EmptyGroup_ReturnsNull()
     {
@@ -66,6 +72,61 @@ public class CategorizerTests
     public void CategorizeItem_ExocraftInGroup_GoesToExocraft()
     {
         var item = MakeItem("TEST", "Test Item", "Exocraft Tech");
+        Assert.Equal("Exocraft.json", Categorizer.CategorizeItem(item));
+    }
+
+    [Theory]
+    [InlineData("Space Station Decoration", "Station.json")]
+    [InlineData("Orbital Base Module", "Station.json")]
+    public void CategorizeItem_StationGroups_GoToStation(string group, string expectedFile)
+    {
+        var item = MakeItem("TEST", "Test Item", group);
+        Assert.Equal(expectedFile, Categorizer.CategorizeItem(item));
+    }
+
+    // STA_ROOM_NPCVEH: station part whose name contains "Exocraft" - the station
+    // group rule must win over the vehicle keyword routing.
+    [Fact]
+    public void CategorizeItem_StationPartWithVehicleKeywordName_GoesToStation()
+    {
+        var item = MakeBuildingPartItem("STA_ROOM_NPCVEH", "Exocraft Terminal", "Orbital Base Module");
+        Assert.Equal("Station.json", Categorizer.CategorizeItem(item));
+    }
+
+    // BuildingPart products matching vehicle keywords are base/freighter build
+    // parts (rooms, bays, terminals), not exocraft tech.
+    [Theory]
+    [InlineData("GARAGE_SUB", "Nautilon Chamber", "Submarine Docking Bay")]
+    [InlineData("FRE_ROOM_NPCVEH", "Exocraft Specialist's Room", "Worker Terminal")]
+    [InlineData("GARAGE_FLOAT", "Nautilon Platform", "Surface-Deployable Submarine Bay")]
+    public void CategorizeItem_BuildingPartWithVehicleKeyword_GoesToBuildings(string id, string name, string group)
+    {
+        var item = MakeBuildingPartItem(id, name, group);
+        Assert.Equal("Buildings.json", Categorizer.CategorizeItem(item));
+    }
+
+    // SHIPSUMMON: BuildingPart product whose group was removed from the Others
+    // exact rules; it falls through to the BuildingPart fallback.
+    [Fact]
+    public void CategorizeItem_ShipSummoningBeacon_GoesToBuildings()
+    {
+        var item = MakeBuildingPartItem("SHIPSUMMON", "Muster Point", "Ship-summoning beacon");
+        Assert.Equal("Buildings.json", Categorizer.CategorizeItem(item));
+    }
+
+    // SWARM_TROPHY_B: BuildingPart product with no exact group rule.
+    [Fact]
+    public void CategorizeItem_BuildingPartUnknownGroup_GoesToBuildings()
+    {
+        var item = MakeBuildingPartItem("SWARM_TROPHY_B", "Prismatic Core", "Antivitreous Device Memento");
+        Assert.Equal("Buildings.json", Categorizer.CategorizeItem(item));
+    }
+
+    // A non-BuildingPart product with a vehicle keyword still goes to Exocraft.
+    [Fact]
+    public void CategorizeItem_NonBuildingPartVehicleKeyword_StillGoesToExocraft()
+    {
+        var item = MakeItem("VEHICLE_ENGINE", "Fusion Engine", "Exocraft Power System");
         Assert.Equal("Exocraft.json", Categorizer.CategorizeItem(item));
     }
 

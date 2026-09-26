@@ -30,10 +30,10 @@ internal static class StarshipDatabase
     /// <summary>Priority value for non-functional / unsorted parts.</summary>
     internal const int OtherPriority = int.MaxValue;
 
-    /// <summary>Priority value for Access (Landing Bay) parts — preserve original order.</summary>
+    /// <summary>Priority value for Access (Landing Bay) parts - preserve original order.</summary>
     internal const int AccessPriority = 5;
 
-    /// <summary>Priority value for Cockpit parts — preserve original order.</summary>
+    /// <summary>Priority value for Cockpit parts - preserve original order.</summary>
     internal const int CockpitPriority = 6;
 
     /// <summary>
@@ -88,7 +88,7 @@ internal static class StarshipDatabase
         map["^B_LND_B"] = (4, 1);
         map["^B_LND_C"] = (4, 2);
 
-        // Category 5: Landing Bays (preserve original order — no sub-order needed)
+        // Category 5: Landing Bays (preserve original order - no sub-order needed)
         map["^B_ALK_A"]   = (5, 0);
         map["^B_ALK_B"]   = (5, 0);
         map["^B_ALK_C"]   = (5, 0);
@@ -98,7 +98,7 @@ internal static class StarshipDatabase
         map["^B_ALK_Z_C"] = (5, 0);
         map["^B_ALK_Z_D"] = (5, 0);
 
-        // Category 6: Cockpits (preserve original order — no sub-order needed)
+        // Category 6: Cockpits (preserve original order - no sub-order needed)
         map["^B_COK_A"] = (6, 0);
         map["^B_COK_B"] = (6, 0);
         map["^B_COK_D"] = (6, 0);

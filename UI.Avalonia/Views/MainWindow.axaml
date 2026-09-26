@@ -181,6 +181,7 @@
         <TabItem x:Name="AccountTab" Classes="primary-tab" />
         <TabItem x:Name="ExportTab" Classes="primary-tab" />
         <TabItem x:Name="RawJsonTab" Classes="primary-tab" />
+        <TabItem x:Name="DatabaseSearchTab" Classes="primary-tab" />
       </TabControl>
 
       <Border x:Name="LoadingOverlay" Background="#99000000" IsVisible="False">

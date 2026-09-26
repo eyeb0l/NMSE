@@ -29,7 +29,7 @@ public static class WikiGuideDatabase
     /// </summary>
     public static readonly List<WikiGuideTopic> Topics = new();
 
-    // ── Hardcoded fallback data removed ──
+    // -- Hardcoded fallback data removed --
     // Topic data is now loaded from Resources/json/Wiki Guide.json at startup.
     // The JSON file is produced by the extractor's ParseWikiGuide() method
     // from WIKI.MXML and contains topic IDs, names, categories, loc keys,

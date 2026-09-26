@@ -30,6 +30,7 @@ internal static class StarshipLogic
         ["Solar"] = "starship.type_solar",
         ["Utopia Speeder"] = "starship.type_utopia_speeder",
         ["Golden Vector"] = "starship.type_golden_vector",
+        ["Golden Rasamama S36"] = "starship.type_golden_rasamama",
         ["Horizon Vector NX (Switch)"] = "starship.type_horizon_vector",
         ["Sentinel"] = "starship.type_sentinel",
         ["Starborn Runner"] = "starship.type_starborn_runner",
@@ -38,6 +39,7 @@ internal static class StarshipLogic
         ["Boundary Herald"] = "starship.type_boundary_herald",
         ["The Wraith"] = "starship.type_the_wraith",
         ["Interceptor"] = "starship.type_interceptor",
+        ["Vintage Interceptor"] = "starship.type_vintage_interceptor",
     };
 
     /// <summary>
@@ -85,6 +87,8 @@ internal static class StarshipLogic
             ["MODELS/COMMON/SPACECRAFT/BIGGS/BIGGS.SCENE.MBIN"] = ("Corvette", new[] { "BIGGS" }, "10x12", "10x6"),
             ["MODELS/COMMON/SPACECRAFT/FIGHTERS/SPOOKSHIP.SCENE.MBIN"] = ("Boundary Herald", new[] { "SPOOKSHIP" }, "10x10", "10x6"),
             ["MODELS/COMMON/SPACECRAFT/S-CLASS/BIOPARTS/BIOFIGHTER.SCENE.MBIN"] = ("The Wraith", new[] { "BIOFIGHTER" }, "10x12", "10x6"),
+            ["MODELS/COMMON/SPACECRAFT/FIGHTERS/RASAMAMAGOLD.SCENE.MBIN"] = ("Golden Rasamama S36", new[] { "RASAMAMAGOLD" }, "10x10", "10x6"),
+            ["MODELS/COMMON/SPACECRAFT/FIGHTERS/VINTAGEINTERCEPTOR.SCENE.MBIN"] = ("Vintage Interceptor", new[] { "VINTAGEINTERCEPTOR" }, "10x12", "10x6"),
         };
 
     /// <summary>
@@ -478,11 +482,11 @@ internal static class StarshipLogic
 
     /// <summary>
     /// The CharacterCustomisationData array contains 26 entries. Entries at indices
-    /// 3–8 correspond to ship slots 0–5 and entries at indices 17–22 correspond to
-    /// ship slots 6–11. This method converts a ShipOwnership index to the matching
+    /// 3-8 correspond to ship slots 0-5 and entries at indices 17-22 correspond to
+    /// ship slots 6-11. This method converts a ShipOwnership index to the matching
     /// CharacterCustomisationData index.
     /// </summary>
-    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0–11).</param>
+    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0-11).</param>
     /// <returns>The corresponding CharacterCustomisationData index, or -1 if out of range.</returns>
     internal static int ShipIndexToCcdIndex(int shipIndex)
     {
@@ -496,7 +500,7 @@ internal static class StarshipLogic
     /// arrays, resetting PaletteID/FCx to "^" and Scale to 1.0.
     /// </summary>
     /// <param name="ccdArray">The CharacterCustomisationData JSON array (expected 26 entries).</param>
-    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0–11).</param>
+    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0-11).</param>
     internal static void ResetShipCustomisation(JsonArray? ccdArray, int shipIndex)
     {
         if (ccdArray == null) return;
@@ -542,7 +546,7 @@ internal static class StarshipLogic
     /// Returns <c>null</c> if the array is missing or the index is out of range.
     /// </summary>
     /// <param name="ccdArray">The CharacterCustomisationData JSON array.</param>
-    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0–11).</param>
+    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0-11).</param>
     /// <returns>A deep-clone of the CCD entry, or <c>null</c>.</returns>
     internal static JsonObject? GetShipCustomisation(JsonArray? ccdArray, int shipIndex)
     {
@@ -563,7 +567,7 @@ internal static class StarshipLogic
     /// reset to default values instead.
     /// </summary>
     /// <param name="ccdArray">The CharacterCustomisationData JSON array.</param>
-    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0–11).</param>
+    /// <param name="shipIndex">Zero-based index in the ShipOwnership array (0-11).</param>
     /// <param name="ccdEntry">The CCD entry to write, or <c>null</c> to reset.</param>
     internal static void SetShipCustomisation(JsonArray? ccdArray, int shipIndex, JsonObject? ccdEntry)
     {
@@ -876,7 +880,7 @@ internal static class StarshipLogic
         return shipTypeName switch
         {
             "Living Ship" or "The Wraith" => "AlienShip",
-            "Sentinel" => "RobotShip",
+            "Sentinel" or "Vintage Interceptor" => "RobotShip",
             "Corvette" => "Corvette",
             _ => "Ship" // Fighter, Hauler, Explorer, Shuttle, Exotic, Solar, etc.
         };
@@ -1314,8 +1318,9 @@ internal static class StarshipLogic
     /// Non-functional parts (Wing, Shield, Hull, Connector, Interior, Decor, Gun,
     /// Hab, etc.) are left unsorted at the end, preserving original save order.
     ///
-    /// Within each sorted category, parts are in ordered (descending) by
-    /// Y-position (height) i.e. highest parts first.
+    /// Within categories 1-4 a fixed sub-order is used; landing bays and cockpits
+    /// keep their original relative order; the Other group sorts alphabetically by
+    /// display name (falling back to ObjectID).
     ///
     /// The optimisation also enforces these Corvette game rules:
     ///   - The first cockpit becomes the camera cockpit
@@ -1328,7 +1333,7 @@ internal static class StarshipLogic
     /// </summary>
     /// <param name="bases">The PersistentPlayerBases array from the save.</param>
     /// <param name="shipIndex">The ship's index in the ShipOwnership array.</param>
-    /// <returns>The number of objects reordered, or -1 if the base was not found.</returns>
+    /// <returns>The number of objects whose position changed, or -1 if the base was not found.</returns>
     internal static int OptimiseCorvetteBase(JsonArray? bases, int shipIndex)
     {
         if (bases == null) return -1;
@@ -1409,22 +1414,6 @@ internal static class StarshipLogic
     }
 
     /// <summary>
-    /// Reads the Y-component (height) from an object's Position array.
-    /// Returns 0 if Position is missing or malformed.
-    /// </summary>
-    private static double GetPositionY(JsonObject obj)
-    {
-        try
-        {
-            var pos = obj.GetArray("Position");
-            if (pos != null && pos.Length >= 2)
-                return pos.GetDouble(1); // Y is index 1 in [X, Y, Z]
-        }
-        catch { }
-        return 0.0;
-    }
-
-    /// <summary>
     /// Reads the Scale value from an object.
     /// Returns 1.0 if Scale is missing or malformed.
     /// </summary>
@@ -1439,19 +1428,21 @@ internal static class StarshipLogic
     /// The priority order is driven by the game's own CorvettePartCategory data:
     /// Reactors -> Engines -> Landing Gears -> Landing Bays -> Cockpit -> Other
     ///
-    /// Within each sorted category, parts are ordered by Y-position descending
-    /// (highest parts first). Unsorted parts preserve their original relative order.
+    /// Within categories 1-4 (reactors, thrusters, wings, gears) a fixed sub-order
+    /// from the priority map is used. Landing bays and cockpits preserve their
+    /// original relative order, and the Other group sorts alphabetically by display
+    /// name (falling back to ObjectID).
     ///
     /// Corvette rules enforced:
-    /// The beam-up landing bay (last in Access group = highest Y) must have
-    /// Scale >= 0.058f - if below, it is clamped up.
+    /// The last landing bay in the reordered array is the beam-up destination and
+    /// must have Scale >= 0.058f - if below, it is clamped up.
     /// </summary>
     /// <param name="objects">The Objects array from a PersistentPlayerBase entry.</param>
-    /// <returns>The number of objects in the reordered array.</returns>
+    /// <returns>The number of objects whose position changed.</returns>
     internal static int ReorderBuildingObjects(JsonArray objects)
     {
         int count = objects.Length;
-        if (count <= 1) return count;
+        if (count <= 1) return 0;
 
         // Extract all objects with their original indices and priority
         var items = new List<(int origIndex, int priority, string objectId, JsonObject obj)>(count);
@@ -1463,6 +1454,11 @@ internal static class StarshipLogic
             int priority = GetPartPriority(objectId);
             items.Add((i, priority, objectId, obj));
         }
+
+        // Snapshot the original object IDs so the number of moved objects can be reported
+        var originalIds = new string[count];
+        for (int i = 0; i < count; i++)
+            originalIds[i] = items[i].objectId;
 
         // Sort matching algorithm:
         //   Primary: by category priority (Reactor -> Engine -> Gear -> Access -> Cockpit -> Other)
@@ -1503,12 +1499,19 @@ internal static class StarshipLogic
             }
         }
 
-        // Rebuild the array in sorted order
+        // Rebuild the array in sorted order and report how many positions changed
+        int moved = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (!string.Equals(items[i].objectId, originalIds[i], StringComparison.Ordinal))
+                moved++;
+        }
+
         objects.Clear();
         foreach (var (_, _, _, obj) in items)
             objects.Add(obj);
 
-        return count;
+        return moved;
     }
 
     /// <summary>

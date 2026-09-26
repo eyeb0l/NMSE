@@ -2,7 +2,7 @@
 
 A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using [CrossOver](https://www.codeweavers.com/crossover), a commercial Wine distribution by CodeWeavers.
 
-> **Note:** This is an interim solution. A native cross-platform version using Eto.Forms is planned - see the [Cross-Platform Work Plan](cross-platform-workplan.md) for details.
+> **Note:** NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review.
 
 ---
 
@@ -21,7 +21,7 @@ A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using [Cros
 
 ## Overview
 
-[CrossOver](https://www.codeweavers.com/crossover) is a commercial Wine distribution ($74/year or $494 lifetime) made by CodeWeavers - the primary commercial contributors to the Wine project. It provides the most polished experience for running Windows applications on macOS, with particular strength on Apple Silicon Macs.
+[CrossOver](https://www.codeweavers.com/crossover) is a commercial Wine distribution made by CodeWeavers - the primary commercial contributors to the Wine project. It provides the most polished experience for running Windows applications on macOS, with particular strength on Apple Silicon Macs. CrossOver 26 and later is based on Wine 11; check the CodeWeavers site for current pricing and version requirements (CrossOver 27 is Apple Silicon only, while CrossOver 26 continues to support Intel Macs).
 
 ---
 
@@ -29,7 +29,7 @@ A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using [Cros
 
 | Feature | CrossOver | Gcenx Wine Builds (Free Alternative) |
 |---------|-----------|--------------------------|
-| **Cost** | $74/year | Free |
+| **Cost** | Paid (see CodeWeavers) | Free |
 | **Apple Silicon** | Excellent (dedicated optimisation) | Good (Rosetta 2) |
 | **Setup difficulty** | Very Easy | Easy |
 | **Support** | Commercial (email + forum) | Community |
@@ -56,7 +56,7 @@ A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using [Cros
 | **macOS version** | macOS 12 Monterey or later |
 | **Chip** | Apple Silicon (M1/M2/M3/M4) or Intel |
 | **Disk space** | ~500 MB (CrossOver + NMSE) |
-| **CrossOver licence** | Required ($74/year or $494 lifetime) |
+| **CrossOver licence** | Paid (trial available; see CodeWeavers for current pricing) |
 
 ---
 
@@ -102,7 +102,6 @@ A step-by-step guide to running NMSE (No Man's Save Editor) on macOS using [Cros
    ├── Resources/
    │   ├── json/
    │   ├── images/
-   │   ├── icons/
    │   ├── ui/
    │   └── map/
    └── ... (DLLs and other files)
@@ -187,7 +186,7 @@ On Apple Silicon Macs, first-launch performance may be slower due to Rosetta 2 t
 
 | Aspect | CrossOver | Gcenx Wine Builds |
 |--------|-----------|--------|
-| **Cost** | $74/year or $494 lifetime | Free (GPL-3.0) |
+| **Cost** | Paid (see CodeWeavers) | Free |
 | **Ease of setup** | Easiest (guided) | Easy (manual bottle creation) |
 | **Apple Silicon** | Best support | Good (Rosetta 2) |
 | **Performance** | Best | Good |
@@ -199,6 +198,6 @@ For most users, **Gcenx Wine Builds** (free) provides a perfectly adequate exper
 
 ---
 
-## Future: Native macOS Support
+## Native Port
 
-See the [Cross-Platform Work Plan](cross-platform-workplan.md) for the full migration roadmap to a native Eto.Forms macOS application.
+Options for a native macOS build are under review; there is no current plan.

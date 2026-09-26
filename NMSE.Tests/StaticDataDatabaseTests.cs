@@ -411,7 +411,7 @@ public class StaticDataDatabaseTests
     [Fact]
     public void CanAddItem_Cargo_AcceptsTechnologyModules()
     {
-        // Technology Module items are cargo-holdable — they resolve as Product
+        // Technology Module items are cargo-holdable - they resolve as Product
         // and should be accepted by cargo inventories.
         var item = new GameItem { Id = "U_SHIPSHIELD3", ItemType = "Technology Module", Category = "Ship" };
         Assert.True(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: true));
@@ -438,29 +438,58 @@ public class StaticDataDatabaseTests
         Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: false));
     }
 
-    [Theory]
-    [InlineData("Emote")]
-    [InlineData("CreatureEgg")]
-    public void CanAddItem_BlacklistedCategory_AlwaysRejected(string category)
+    [Fact]
+    public void CanAddItem_EmoteCategory_AlwaysRejected()
     {
-        // Category blacklist excludes Emote and CreatureEgg
-        var item = new GameItem { Id = "TEST", ItemType = "Products", Category = category };
+        // Category blacklist excludes Emote unlock items only.  Creature eggs are
+        // products and must not be excluded (see Database_CreatureEggs_AreAddable...).
+        var item = new GameItem { Id = "TEST", ItemType = "Products", Category = "Emote" };
         Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: false));
         Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: true));
     }
 
     [Fact]
-    public void CanAddItem_Building_NonPickupable_Rejected()
+    public void Database_CreatureEggs_AreAddableToCargoAndGeneral()
     {
-        // CanPickUp excludes base building products that are neither
-        // CanPickUp nor IsTemporary (permanent structures).
+        // Creature eggs are ordinary products (ProductCategory "CreatureEgg") and
+        // can be stored in cargo and general inventories.  Only Emote unlock items
+        // are blacklisted; the old NomNom-derived CreatureEgg category exclusion
+        // must not apply.
+        var db = new GameItemDatabase();
+        var jsonDir = FindResourceJsonDir();
+        if (jsonDir == null) return;
+        db.LoadItemsFromJsonDirectory(jsonDir);
+
+        var eggs = db.Items.Values
+            .Where(i => i.ProductCategory.Equals("CreatureEgg", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        Assert.NotEmpty(eggs);
+
+        foreach (var egg in eggs)
+        {
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(egg, isTechOnly: false, isCargo: true),
+                $"{egg.Id} should be addable to cargo");
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(egg, isTechOnly: false, isCargo: false),
+                $"{egg.Id} should be addable to a general inventory");
+            Assert.False(InventoryStackDatabase.CanAddItemToInventory(egg, isTechOnly: true, isCargo: false),
+                $"{egg.Id} should not be installable in a tech-only inventory");
+        }
+    }
+
+    [Fact]
+    public void CanAddItem_Building_NonPickupable_Accepted()
+    {
+        // CanPickUp describes whether a placed structure can be retrieved, not
+        // whether the item can be stored in an inventory, so permanent buildings
+        // are still addable (only tech-only slots reject them).
         var item = new GameItem
         {
             Id = "BUILDING1", ItemType = "Buildings", Category = "BuildingPart",
             CanPickUp = false, IsTemporary = false
         };
-        Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: false));
-        Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: true));
+        Assert.True(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: false));
+        Assert.True(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: false, isCargo: true));
+        Assert.False(InventoryStackDatabase.CanAddItemToInventory(item, isTechOnly: true, isCargo: false));
     }
 
     [Fact]
@@ -883,7 +912,7 @@ public class StaticDataDatabaseTests
     public void WordDatabase_LoadFromFile_ReturnsExpectedWordCount()
     {
         var db = LoadWordDbFromJson();
-        Assert.Equal(2150, db.Count);
+        Assert.Equal(2151, db.Count);
     }
 
     [Fact]
@@ -2155,13 +2184,17 @@ public class StaticDataDatabaseTests
         Assert.True(temporary > 0,
             $"Expected some buildings with IsTemporary=true, found 0 out of {buildings.Count}");
 
-        // Non-pickupable, non-temporary buildings should be rejected by inventory filter
+        // All buildings are addable to a normal inventory.  CanPickUp/IsTemporary
+        // only describe retrieving a placed structure, not inventory membership.
         var permanentBuilding = buildings.FirstOrDefault(b => !b.CanPickUp && !b.IsTemporary);
         if (permanentBuilding != null)
         {
-            Assert.False(InventoryStackDatabase.CanAddItemToInventory(
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(
                 permanentBuilding, isTechOnly: false, isCargo: false),
-                $"Permanent building {permanentBuilding.Id} should be rejected by CanAddItemToInventory");
+                $"Permanent building {permanentBuilding.Id} should be accepted by CanAddItemToInventory");
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(
+                permanentBuilding, isTechOnly: false, isCargo: true),
+                $"Permanent building {permanentBuilding.Id} should be accepted by cargo");
         }
 
         // Pickupable buildings should be accepted
@@ -2174,7 +2207,30 @@ public class StaticDataDatabaseTests
         }
     }
 
-    // ── WikiGuideDatabase tests (moved from LogicTests to avoid parallel static data mutation) ──
+    [Fact]
+    public void Database_Buildings_ReportedItems_ArePickable()
+    {
+        // Regression: SB_BEACON (Deep-space Base Computer) and products that live
+        // in Buildings.json without base-building metadata (CHART_SETTLE, myth
+        // beacon items) must be offered by the item picker.  CanPickUp describes
+        // retrieving a placed structure, not inventory membership.
+        var db = new GameItemDatabase();
+        var jsonDir = FindResourceJsonDir();
+        if (jsonDir == null) return;
+        db.LoadItemsFromJsonDirectory(jsonDir);
+
+        foreach (string id in new[] { "SB_BEACON", "GARAGE_FREIGHT", "CHART_SETTLE", "MYSTERY_BEACON", "MYSTERY_TRACKER" })
+        {
+            var item = db.GetItem(id);
+            Assert.NotNull(item);
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(item!, isTechOnly: false, isCargo: true),
+                $"{id} should be addable to cargo");
+            Assert.True(InventoryStackDatabase.CanAddItemToInventory(item!, isTechOnly: false, isCargo: false),
+                $"{id} should be addable to a general inventory");
+        }
+    }
+
+    // -- WikiGuideDatabase tests (moved from LogicTests to avoid parallel static data mutation) --
 
     [Fact]
     public void WikiGuideDatabase_GetTopicName_ReturnsExpectedNames()
@@ -2193,9 +2249,9 @@ public class StaticDataDatabaseTests
     }
 
     [Fact]
-    public void WikiGuideDatabase_TopicCount_Is57()
+    public void WikiGuideDatabase_TopicCount_Is58()
     {
-        Assert.Equal(57, WikiGuideDatabase.Topics.Count);
+        Assert.Equal(58, WikiGuideDatabase.Topics.Count);
     }
 
     [Fact]

@@ -54,7 +54,7 @@ internal static class CatalogueLogic
     internal static readonly HashSet<string> ProductItemTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "Products", "Constructed Technology", "Buildings", "Corvette",
-        "Curiosities", "Others"
+        "Station", "Curiosities", "Others"
     };
 
     /// <summary>

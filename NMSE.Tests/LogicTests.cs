@@ -73,7 +73,7 @@ public class LogicTests
     [Fact]
     public void StarshipLogic_ShipInfo_ContainsAllExpectedTypes()
     {
-        Assert.True(StarshipLogic.ShipInfo.Count >= 16);
+        Assert.True(StarshipLogic.ShipInfo.Count >= 18);
         Assert.Contains("Hauler", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
         Assert.Contains("Explorer", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
         Assert.Contains("Fighter", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
@@ -82,6 +82,8 @@ public class LogicTests
         Assert.Contains("Solar", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
         Assert.Contains("Shuttle", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
         Assert.Contains("Sentinel", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
+        Assert.Contains("Golden Rasamama S36", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
+        Assert.Contains("Vintage Interceptor", StarshipLogic.ShipInfo.Values.Select(v => v.DisplayName));
     }
 
     [Theory]
@@ -89,6 +91,8 @@ public class LogicTests
     [InlineData("MODELS/COMMON/SPACECRAFT/SCIENTIFIC/SCIENTIFIC_PROC.SCENE.MBIN", "Explorer")]
     [InlineData("MODELS/COMMON/SPACECRAFT/FIGHTERS/FIGHTER_PROC.SCENE.MBIN", "Fighter")]
     [InlineData("MODELS/COMMON/SPACECRAFT/S-CLASS/S-CLASS_PROC.SCENE.MBIN", "Exotic")]
+    [InlineData("MODELS/COMMON/SPACECRAFT/FIGHTERS/RASAMAMAGOLD.SCENE.MBIN", "Golden Rasamama S36")]
+    [InlineData("MODELS/COMMON/SPACECRAFT/FIGHTERS/VINTAGEINTERCEPTOR.SCENE.MBIN", "Vintage Interceptor")]
     public void StarshipLogic_GetShipInfo_ReturnsCorrectDisplayName(string filename, string expectedName)
     {
         var (displayName, _, _) = StarshipLogic.GetShipInfo(filename);
@@ -145,6 +149,27 @@ public class LogicTests
     public void StarshipLogic_LookupFilenameForType_UnknownType_ReturnsEmpty()
     {
         Assert.Equal("", StarshipLogic.LookupFilenameForType("NonExistentType"));
+    }
+
+    [Theory]
+    [InlineData("Golden Rasamama S36", "MODELS/COMMON/SPACECRAFT/FIGHTERS/RASAMAMAGOLD.SCENE.MBIN")]
+    [InlineData("Vintage Interceptor", "MODELS/COMMON/SPACECRAFT/FIGHTERS/VINTAGEINTERCEPTOR.SCENE.MBIN")]
+    public void StarshipLogic_LookupFilenameForType_CosmosRewards_ReturnExactScene(string typeName, string expected)
+    {
+        Assert.Equal(expected, StarshipLogic.LookupFilenameForType(typeName));
+    }
+
+    [Fact]
+    public void StarshipLogic_EveryTypeNameMapsBackToItself()
+    {
+        // A type must resolve to a canonical scene whose exact lookup returns the same
+        // type name, otherwise saving collapses the ship to another scene of that type.
+        foreach (string typeName in StarshipLogic.GetShipTypeNames())
+        {
+            string filename = StarshipLogic.LookupFilenameForType(typeName);
+            Assert.False(string.IsNullOrEmpty(filename), $"No scene for '{typeName}'");
+            Assert.Equal(typeName, StarshipLogic.LookupShipTypeName(filename));
+        }
     }
 
     [Theory]
@@ -502,7 +527,7 @@ public class LogicTests
         // Cockpit (priority 6)
         Assert.Equal(6, StarshipLogic.GetPartPriority("^B_COK_A"));
 
-		// Shield is NOT in priority map — goes to OtherPriority
+		// Shield is NOT in priority map - goes to OtherPriority
 		Assert.Equal(StarshipDatabase.OtherPriority, StarshipLogic.GetPartPriority("^B_SHL_A"));
 
         // Other (non-functional or not in priority map)
@@ -520,7 +545,7 @@ public class LogicTests
 
 		// Create objects in scrambled order to verify reorder puts them in correct priority.
 		// Priority map: Reactor(1) -> Thruster(2) -> Wing(3) -> Gear(4) -> Access(5) -> Cockpit(6) -> Other
-		// B_STR_B_NE (Hull) and B_WNG_E (not in priority map) are NOT sorted — they go to Other group.
+		// B_STR_B_NE (Hull) and B_WNG_E (not in priority map) are NOT sorted - they go to Other group.
 		var json = JsonObject.Parse(@"{
             ""Objects"": [
                 { ""ObjectID"": ""^BUILDTABLE2"", ""UserData"": 1 },
@@ -1186,6 +1211,101 @@ public class LogicTests
         Assert.Equal("Standard", MultitoolLogic.ToolTypes[0].Name);
         Assert.Equal("Rifle", MultitoolLogic.ToolTypes[1].Name);
         Assert.Equal("Royal", MultitoolLogic.ToolTypes[2].Name);
+    }
+
+    [Fact]
+    public void MultitoolLogic_ToolTypes_IncludesStarboundRetroModel()
+    {
+        // Cosmos expedition reward "Starbound V0.27" uses the unique
+        // RETROMULTITOOL.SCENE.MBIN model.
+        Assert.Contains(MultitoolLogic.ToolTypes,
+            t => t.Name == "Starbound"
+                && t.Filename.EndsWith("RETROMULTITOOL.SCENE.MBIN", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void MultitoolLogic_LoadToolData_DetectsStarboundRetroModel()
+    {
+        // Detection must map the retro resource to the Starbound type so that
+        // saving does not rewrite the resource to the shared MULTITOOL model.
+        var tool = new JsonObject();
+        var resource = new JsonObject();
+        resource.Add("Filename", "MODELS/COMMON/WEAPONS/MULTITOOL/RETROMULTITOOL.SCENE.MBIN");
+        tool.Add("Resource", resource);
+        tool.Add("Store", new JsonObject());
+        tool.Add("Store_TechOnly", new JsonObject());
+
+        var data = MultitoolLogic.LoadToolData(tool);
+
+        int expected = Array.FindIndex(MultitoolLogic.ToolTypes, t => t.Name == "Starbound");
+        Assert.True(expected >= 0, "Starbound type must exist in ToolTypes");
+        Assert.Equal(expected, data.TypeIndex);
+    }
+
+    [Theory]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/SENTINELMULTITOOL.SCENE.MBIN",   "Robot")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/SENTINELMULTITOOLB.SCENE.MBIN",  "Robot")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/SWITCHMULTITOOL.SCENE.MBIN",     "Rifle")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/ROYALMULTITOOL.SCENE.MBIN",      "Royal")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/STAFFMULTITOOLATLAS.SCENE.MBIN", "Staff")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/STAFFMULTITOOLRUIN.SCENE.MBIN",  "Staff")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/STAFFMULTITOOLBONE.SCENE.MBIN",  "Staff")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/STAFFMULTITOOL.SCENE.MBIN",      "Staff")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/STAFFNPCMULTITOOL.SCENE.MBIN",   "Staff")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/ATLASMULTITOOL.SCENE.MBIN",      "Atlas")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/SWARMMULTITOOL.SCENE.MBIN",      "Rifle")]
+    [InlineData("MODELS/COMMON/WEAPONS/MULTITOOL/RETROMULTITOOL.SCENE.MBIN",      "Pistol")]
+    public void MultitoolLogic_GetArchivedWeaponClass_UniqueModels(string filename, string expected)
+    {
+        // Values mirror the game's GcWeaponClasses enum.  Robot, Atlas, Rifle (Switch/Swarm),
+        // Staff (all staff variants) and the retro Pistol class were confirmed against the
+        // game's own reward table and in-game archived multitools.
+        var tool = BuildArchiveClassTool(filename);
+
+        Assert.Equal(expected, MultitoolLogic.GetArchivedWeaponClass(tool));
+    }
+
+    [Theory]
+    [InlineData(5.0, 0.0,  5.0, "Rifle")]
+    [InlineData(5.0, 0.0, 10.0, "Alien")]
+    [InlineData(5.0, 5.0, 50.0, "Pristine")]
+    [InlineData(0.0, 5.0,  5.0, "Pistol")]
+    public void MultitoolLogic_GetArchivedWeaponClass_SharedModelUsesStats(
+        double damage, double mining, double scan, string expected)
+    {
+        // Shared-model tools are archived by the game using the class derived from
+        // their base stats (observed in-game: a shared-model rifle archived as "Rifle").
+        var tool = BuildArchiveClassTool("MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN");
+        var classObj = new JsonObject();
+        classObj.Add("InventoryClass", "C");
+        var store = tool.GetObject("Store")!;
+        store.Add("Class", classObj);
+        var stats = new JsonArray();
+        AddBaseStat(stats, "^WEAPON_DAMAGE", damage);
+        AddBaseStat(stats, "^WEAPON_MINING", mining);
+        AddBaseStat(stats, "^WEAPON_SCAN", scan);
+        store.Add("BaseStatValues", stats);
+
+        Assert.Equal(expected, MultitoolLogic.GetArchivedWeaponClass(tool));
+    }
+
+    private static JsonObject BuildArchiveClassTool(string filename)
+    {
+        var tool = new JsonObject();
+        var resource = new JsonObject();
+        resource.Add("Filename", filename);
+        tool.Add("Resource", resource);
+        tool.Add("Store", new JsonObject());
+        tool.Add("Store_TechOnly", new JsonObject());
+        return tool;
+    }
+
+    private static void AddBaseStat(JsonArray stats, string id, double value)
+    {
+        var entry = new JsonObject();
+        entry.Add("BaseStatID", id);
+        entry.Add("Value", value);
+        stats.Add(entry);
     }
 
     [Fact]
@@ -2640,7 +2760,7 @@ public class LogicTests
     [Fact]
     public void GetSlotLayout_Spider_WithOwnVariants_UsesOwnData()
     {
-        // SPIDER has its own PetAccessorySlots — should use those directly
+        // SPIDER has its own PetAccessorySlots - should use those directly
         var layout = CompanionAccessoryDatabase.GetSlotLayoutForCreature("^SPIDER");
         Assert.Equal(2, layout.Length);
         Assert.Contains(AccessorySlot.Left, layout);
@@ -4387,7 +4507,7 @@ public class LogicTests
             System.Threading.Thread.CurrentThread.CurrentCulture =
                 new System.Globalization.CultureInfo("de-DE");
 
-			// German user types "1,5" — should parse as 1.5
+			// German user types "1,5" - should parse as 1.5
 			Assert.True(NumericParseHelper.TryParseDouble("1,5", out double v));
             Assert.Equal(1.5, v, 10);
         }
@@ -5015,6 +5135,15 @@ public class LogicTests
         }
     }
 
+    [Fact]
+    public void SquadronLogic_CosmosRewardShips_ResolveToTypes()
+    {
+        Assert.Equal("Golden Rasamama S36",
+            SquadronLogic.ShipResourceToType["MODELS/COMMON/SPACECRAFT/FIGHTERS/RASAMAMAGOLD.SCENE.MBIN"]);
+        Assert.Equal("Vintage Interceptor",
+            SquadronLogic.ShipResourceToType["MODELS/COMMON/SPACECRAFT/FIGHTERS/VINTAGEINTERCEPTOR.SCENE.MBIN"]);
+    }
+
     // --- SettlementLogic - Population Field --------------------------
 
     [Fact]
@@ -5568,6 +5697,8 @@ public class LogicTests
     [InlineData("Living Ship", "AlienShip")]
     [InlineData("The Wraith", "AlienShip")]
     [InlineData("Sentinel", "RobotShip")]
+    [InlineData("Vintage Interceptor", "RobotShip")]
+    [InlineData("Golden Rasamama S36", "Ship")]
     [InlineData("Corvette", "Corvette")]
     public void StarshipLogic_GetOwnerTypeForShip_ReturnsCorrectOwner(string shipType, string expectedOwner)
     {
@@ -5956,7 +6087,7 @@ public class LogicTests
             ("^REWARD_2", false),
         };
 
-		// No database — defaults to SeenProducts.
+		// No database - defaults to SeenProducts.
 		AccountLogic.SyncAccountSeenArrays(userSettings, rewards);
 
         var seen = userSettings.GetArray("SeenProducts");
@@ -6523,6 +6654,21 @@ public class LogicTests
     // --- AppConfig.RecentDirectories -----------------------------------
 
     [Fact]
+    public void AppConfig_Theme_UsesSystemByDefault()
+    {
+        var config = new AppConfig();
+        Assert.Equal("System", config.Theme);
+    }
+
+    [Fact]
+    public void AppConfig_Theme_RoundTrips()
+    {
+        var config = new AppConfig();
+        config.Theme = "Dark";
+        Assert.Equal("Dark", config.Theme);
+    }
+
+    [Fact]
     public void AppConfig_RecentDirectories_EmptyByDefault()
     {
         var config = new AppConfig();
@@ -7019,7 +7165,7 @@ public class LogicTests
             new(RawJsonLogic.DiffLineType.Context, "line3", 3, 3),
         };
         var result = RawJsonLogic.CollapseContext(raw, 1);
-		// No changes, so everything is far from a change — should be empty or just a separator
+		// No changes, so everything is far from a change - should be empty or just a separator
 		Assert.DoesNotContain(result, dl => dl.Type == RawJsonLogic.DiffLineType.Added);
         Assert.DoesNotContain(result, dl => dl.Type == RawJsonLogic.DiffLineType.Removed);
     }
@@ -7051,7 +7197,7 @@ public class LogicTests
             newLines.AppendLine(CultureInfo.InvariantCulture, $"  \"prefix_{i}\": {i}");
         }
 
-        // Section where every line differs — forces edit distance >> MaxDiffDistance
+        // Section where every line differs - forces edit distance >> MaxDiffDistance
         for (int i = 0; i < changedLines; i++)
         {
             oldLines.AppendLine(CultureInfo.InvariantCulture, $"  \"Amount\": {i}");
@@ -7226,6 +7372,274 @@ public class LogicTests
     {
         string context = RawJsonLogic.FindJsonContext([], 0);
         Assert.Equal("", context);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContext_DoesNotDuplicateNestedKeys()
+    {
+        string[] lines =
+        [
+            "{",
+            "  \"PlayerStateData\": {",
+            "    \"KnownProducts\": [",
+            "      {",
+            "        \"Value\": 42",
+            "      }",
+            "    ]",
+            "  }",
+            "}"
+        ];
+
+        string context = RawJsonLogic.FindJsonContext(lines, 4);
+        Assert.Equal("PlayerStateData > KnownProducts", context);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_ReturnsOrderedPathWithLineIndices()
+    {
+        string[] lines =
+        [
+            "{",
+            "  \"PlayerStateData\": {",
+            "    \"KnownProducts\": [",
+            "      {",
+            "        \"Value\": 42",
+            "      }",
+            "    ]",
+            "  }",
+            "}"
+        ];
+
+        var segments = RawJsonLogic.FindJsonContextSegments(lines, 4);
+
+        Assert.Equal(3, segments.Count);
+        Assert.Equal("PlayerStateData", segments[0].Key);
+        Assert.Equal(1, segments[0].LineIndex);
+        Assert.Equal("KnownProducts", segments[1].Key);
+        Assert.Equal(2, segments[1].LineIndex);
+        Assert.Equal("Value", segments[2].Key);
+        Assert.Equal(4, segments[2].LineIndex);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_EmptyLines_ReturnsEmpty()
+    {
+        Assert.Empty(RawJsonLogic.FindJsonContextSegments([], 0));
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_IgnoresBracesInsideStrings()
+    {
+        string[] lines =
+        [
+            "{",
+            "  \"Name\": \"Base { Alpha\",",
+            "  \"Value\": 1",
+            "}"
+        ];
+
+        var segments = RawJsonLogic.FindJsonContextSegments(lines, 2);
+
+        Assert.Single(segments);
+        Assert.Equal("Value", segments[0].Key);
+        Assert.Equal(2, segments[0].LineIndex);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_WithOwnerMap_ReturnsOrderedPath()
+    {
+        string[] lines =
+        [
+            "{",
+            "  \"PlayerStateData\": {",
+            "    \"KnownProducts\": [",
+            "      {",
+            "        \"Value\": 42",
+            "      }",
+            "    ]",
+            "  }",
+            "}"
+        ];
+        // Owner map produced by the fold scan: each line points at the innermost
+        // container opened before it, or -1 at the root.
+        int[] owners = [-1, 0, 1, 2, 3, 3, 2, 1, 0];
+
+        var segments = RawJsonLogic.FindJsonContextSegments(lines, 4, owners);
+
+        Assert.Equal(3, segments.Count);
+        Assert.Equal("PlayerStateData", segments[0].Key);
+        Assert.Equal(1, segments[0].LineIndex);
+        Assert.Equal("KnownProducts", segments[1].Key);
+        Assert.Equal(2, segments[1].LineIndex);
+        Assert.Equal("Value", segments[2].Key);
+        Assert.Equal(4, segments[2].LineIndex);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_WithOwnerMap_ClosingLineShowsContainer()
+    {
+        string[] lines =
+        [
+            "{",
+            "  \"PlayerStateData\": {",
+            "    \"Value\": 1",
+            "  }",
+            "}"
+        ];
+        int[] owners = [-1, 0, 1, 1, 0];
+
+        // Line 3 closes PlayerStateData, so the breadcrumb should show its container.
+        var segments = RawJsonLogic.FindJsonContextSegments(lines, 3, owners);
+
+        Assert.Single(segments);
+        Assert.Equal("PlayerStateData", segments[0].Key);
+        Assert.Equal(1, segments[0].LineIndex);
+    }
+
+    [Fact]
+    public void RawJsonLogic_FindJsonContextSegments_WithOwnerMap_EmptyLines_ReturnsEmpty()
+    {
+        Assert.Empty(RawJsonLogic.FindJsonContextSegments([], 0, []));
+    }
+
+    // --- Isolated node editing ---
+
+    [Fact]
+    public void RawJsonLogic_SerializeNodeSnippet_ObjectMember_IncludesKeyAndComma()
+    {
+        var value = new JsonObject();
+        value.Add("Location", 0);
+
+        string snippet = RawJsonLogic.SerializeNodeSnippet("SkiffData", value);
+
+        Assert.StartsWith("\"SkiffData\": {", snippet);
+        Assert.EndsWith("},", snippet);
+    }
+
+    [Fact]
+    public void RawJsonLogic_SerializeNodeSnippet_ArrayElement_OmitsKey()
+    {
+        string snippet = RawJsonLogic.SerializeNodeSnippet("[3]", 42);
+
+        Assert.Equal("42,", snippet);
+    }
+
+    [Fact]
+    public void RawJsonLogic_SerializeNodeSnippet_UsesLfLineEndings()
+    {
+        var value = new JsonObject();
+        value.Add("Location", 0);
+        value.Add("Nested", new JsonObject());
+
+        string snippet = RawJsonLogic.SerializeNodeSnippet("SkiffData", value);
+
+        // The isolated editor stores LF-only lines, so snippet comparisons must not
+        // be broken by platform line endings (regression: every node selection was
+        // applied as a no-op edit and marked the save dirty).
+        Assert.DoesNotContain('\r', snippet);
+        Assert.Contains("\n", snippet);
+    }
+
+    [Fact]
+    public void RawJsonLogic_ParseObjectMemberSnippet_RoundTrips()
+    {
+        string snippet = RawJsonLogic.SerializeNodeSnippet("SkiffData", new JsonObject());
+
+        var (key, value) = RawJsonLogic.ParseObjectMemberSnippet(snippet);
+
+        Assert.Equal("SkiffData", key);
+        Assert.IsType<JsonObject>(value);
+    }
+
+    [Fact]
+    public void RawJsonLogic_ParseObjectMemberSnippet_TrailingCommaOptional()
+    {
+        var (key, value) = RawJsonLogic.ParseObjectMemberSnippet("\"Health\": 42");
+
+        Assert.Equal("Health", key);
+        Assert.Equal(42, value);
+    }
+
+    [Fact]
+    public void RawJsonLogic_ParseObjectMemberSnippet_EscapedKey_RoundTrips()
+    {
+        string snippet = RawJsonLogic.SerializeNodeSnippet("Key\"With\\Escapes", true);
+
+        var (key, value) = RawJsonLogic.ParseObjectMemberSnippet(snippet);
+
+        Assert.Equal("Key\"With\\Escapes", key);
+        Assert.Equal(true, value);
+    }
+
+    [Fact]
+    public void RawJsonLogic_ParseObjectMemberSnippet_MultipleMembers_Throws()
+    {
+        Assert.Throws<JsonException>(() => RawJsonLogic.ParseObjectMemberSnippet("\"A\": 1, \"B\": 2,"));
+    }
+
+    [Fact]
+    public void RawJsonLogic_ParseValueSnippet_ArrayElement_RoundTrips()
+    {
+        string snippet = RawJsonLogic.SerializeNodeSnippet("[0]", "text");
+
+        object? value = RawJsonLogic.ParseValueSnippet(snippet);
+
+        Assert.Equal("text", value);
+    }
+
+    [Fact]
+    public void RawJsonLogic_ApplyRootSnippet_ReplacesContentsInPlace()
+    {
+        var root = new JsonObject();
+        root.Add("Old", 1);
+
+        RawJsonLogic.ApplyRootSnippet(root, "{ \"New\": 2 },");
+
+        Assert.False(root.Contains("Old"));
+        Assert.True(root.Contains("New"));
+        Assert.Equal(2, root.Get("New"));
+    }
+
+    [Fact]
+    public void JsonObject_Rename_PreservesOrderAndReturnsTrue()
+    {
+        var obj = new JsonObject();
+        obj.Add("A", 1);
+        obj.Add("B", 2);
+        obj.Add("C", 3);
+
+        Assert.True(obj.Rename("B", "B2"));
+
+        var names = obj.Names();
+        Assert.Equal(3, names.Count);
+        Assert.Equal("B2", names[1]);
+        Assert.Equal(2, obj.Get("B2"));
+    }
+
+    [Fact]
+    public void JsonObject_Rename_DuplicateOrMissing_ReturnsFalse()
+    {
+        var obj = new JsonObject();
+        obj.Add("A", 1);
+        obj.Add("B", 2);
+
+        Assert.False(obj.Rename("B", "A"));
+        Assert.False(obj.Rename("Missing", "C"));
+        Assert.Equal(2, obj.Size());
+    }
+
+    [Fact]
+    public void JsonObject_Clear_RemovesAllProperties()
+    {
+        var obj = new JsonObject();
+        obj.Add("A", 1);
+        obj.Add("B", new JsonObject());
+
+        obj.Clear();
+
+        Assert.Equal(0, obj.Size());
+        Assert.False(obj.Contains("A"));
+        Assert.False(obj.Contains("B"));
     }
 
     [Fact]
@@ -9071,13 +9485,13 @@ public class LogicTests
         var obj = JsonObject.Parse(json);
 
         string value = obj.GetString("Name")!;
-        Assert.Contains("\u03BB", value); // λ
-        Assert.Contains("\u0166", value); // Ŧ
+        Assert.Contains("\u03BB", value); // Greek lambda
+        Assert.Contains("\u0166", value); // Latin T with stroke
 
         // Re-serialise: chars > U+00FF are now written as raw UTF-8 bytes
         // (matching the NMS game format), not as \uXXXX escapes.
-        // The parser round-trips them correctly: UTF-8 bytes → read as
-        // Latin-1 → detected as valid UTF-8 → decoded back to Unicode.
+        // The parser round-trips them correctly: UTF-8 bytes -> read as
+        // Latin-1 -> detected as valid UTF-8 -> decoded back to Unicode.
         string output = obj.ToString();
         // Should NOT contain \uXXXX for these characters
         Assert.DoesNotContain("\\u03BB", output, StringComparison.OrdinalIgnoreCase);
@@ -9093,7 +9507,7 @@ public class LogicTests
     [Fact]
     public void JsonParser_UnicodeEscapeLatin1Range_ReturnsStringNotBinaryData()
     {
-        // \u00E9 (é, U+00E9) is in the 0x80-0xFF range but arrives as a \u escape,
+        // \u00E9 (U+00E9) is in the 0x80-0xFF range but arrives as a \u escape,
         // so it represents intentional Unicode - not raw binary data.
         // This must parse as a string, NOT BinaryData.
         string json = """{"SaveName": "Caf\u00E9 \u00FC\u00F1"}""";
@@ -9112,13 +9526,13 @@ public class LogicTests
         // When Latin-1 decoded save data contains raw bytes that form valid
         // UTF-8 sequences (e.g. a Greek save name), the parser must decode
         // them as UTF-8 text, NOT return BinaryData.
-        // CE BB is the UTF-8 encoding of λ (U+03BB).
+        // CE BB is the UTF-8 encoding of U+03BB.
         string json = "{\"Data\": \"" + (char)0xCE + (char)0xBB + "\"}";
         var obj = JsonObject.Parse(json);
 
         var value = obj.Get("Data");
         Assert.IsType<string>(value);
-        Assert.Equal("\u03BB", (string)value!); // λ
+        Assert.Equal("\u03BB", (string)value!); // Greek lambda
     }
 
     [Fact]
@@ -9136,13 +9550,13 @@ public class LogicTests
     [Fact]
     public void JsonParser_RawUtf8_GreekSaveName_ReturnsString()
     {
-        // Simulate a save name "λŦLλS Breach" stored as raw UTF-8 bytes
+        // Simulate a save name with Greek and Latin special characters stored as raw UTF-8 bytes
         // read through Latin-1 encoding (the exact scenario from the bug report).
-        // λ = CE BB, Ŧ = C5 A6 in UTF-8
-        string latin1 = "" + (char)0xCE + (char)0xBB     // λ
-                            + (char)0xC5 + (char)0xA6     // Ŧ
+        // U+03BB = CE BB, U+0166 = C5 A6 in UTF-8
+        string latin1 = "" + (char)0xCE + (char)0xBB     // U+03BB
+                            + (char)0xC5 + (char)0xA6     // U+0166
                             + "L"
-                            + (char)0xCE + (char)0xBB     // λ
+                            + (char)0xCE + (char)0xBB     // U+03BB
                             + "S Breach";
         string json = "{\"SaveName\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
@@ -9155,10 +9569,10 @@ public class LogicTests
     [Fact]
     public void JsonParser_RawUtf8_CjkCharacters_ReturnsString()
     {
-        // CJK character 漢 = E6 BC A2 in UTF-8
-        // Japanese あ = E3 81 82 in UTF-8
-        string latin1 = "" + (char)0xE6 + (char)0xBC + (char)0xA2   // 漢
-                            + (char)0xE3 + (char)0x81 + (char)0x82;  // あ
+        // CJK character U+6F22 = E6 BC A2 in UTF-8
+        // Japanese U+3042 = E3 81 82 in UTF-8
+        string latin1 = "" + (char)0xE6 + (char)0xBC + (char)0xA2   // U+6F22
+                            + (char)0xE3 + (char)0x81 + (char)0x82;  // U+3042
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
 
@@ -9170,41 +9584,41 @@ public class LogicTests
     [Fact]
     public void JsonParser_RawUtf8_KoreanCharacters_ReturnsString()
     {
-        // Korean 한 = ED 95 9C in UTF-8
-        string latin1 = "" + (char)0xED + (char)0x95 + (char)0x9C   // 한
+        // Korean U+D55C = ED 95 9C in UTF-8
+        string latin1 = "" + (char)0xED + (char)0x95 + (char)0x9C   // U+D55C
                             + "Test";
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
 
         var value = obj.Get("Name");
         Assert.IsType<string>(value);
-        Assert.Equal("\uD55CTest", (string)value!); // 한 + "Test"
+        Assert.Equal("\uD55CTest", (string)value!); // U+D55C + "Test"
     }
 
     [Fact]
     public void JsonParser_RawUtf8_CyrillicCharacters_ReturnsString()
     {
-        // Cyrillic Б = D0 91 in UTF-8
-        string latin1 = "" + (char)0xD0 + (char)0x91;   // Б
+        // Cyrillic U+0411 = D0 91 in UTF-8
+        string latin1 = "" + (char)0xD0 + (char)0x91;   // U+0411
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
 
         var value = obj.Get("Name");
         Assert.IsType<string>(value);
-        Assert.Equal("\u0411", (string)value!); // Б
+        Assert.Equal("\u0411", (string)value!); // U+0411
     }
 
     [Fact]
     public void JsonParser_RawUtf8_SettlementName_MixedGreekAscii_ReturnsString()
     {
-        // Simulate settlement name "00σφ011ηρ Station" as stored in save file.
-        // σ=CF83, φ=CF86, η=CEB7, ρ=CF81 in UTF-8
+        // Simulate a settlement name containing Greek characters as stored in the save file.
+        // U+03C3=CF83, U+03C6=CF86, U+03B7=CEB7, U+03C1=CF81 in UTF-8
         string latin1 = "00"
-            + (char)0xCF + (char)0x83    // σ
-            + (char)0xCF + (char)0x86    // φ
+            + (char)0xCF + (char)0x83    // U+03C3
+            + (char)0xCF + (char)0x86    // U+03C6
             + "011"
-            + (char)0xCE + (char)0xB7    // η
-            + (char)0xCF + (char)0x81    // ρ
+            + (char)0xCE + (char)0xB7    // U+03B7
+            + (char)0xCF + (char)0x81    // U+03C1
             + " Station";
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
@@ -9219,7 +9633,7 @@ public class LogicTests
     {
         // Parse a string with raw UTF-8 bytes, serialize it, parse again,
         // and verify the content is preserved.
-        // λ = CE BB in UTF-8
+        // U+03BB = CE BB in UTF-8
         string latin1 = "Hello " + (char)0xCE + (char)0xBB + " World";
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
@@ -9227,7 +9641,7 @@ public class LogicTests
         string name = obj.GetString("Name")!;
         Assert.Equal("Hello \u03BB World", name);
 
-        // Re-serialize: λ (U+03BB > 0xFF) is emitted as raw UTF-8 bytes CE BB.
+        // Re-serialize: U+03BB (> 0xFF) is emitted as raw UTF-8 bytes CE BB.
         string output = obj.ToString();
 
         // Parse again
@@ -9240,28 +9654,28 @@ public class LogicTests
     public void JsonParser_FrenchCharacters_RoundTrip_PreservesBytes()
     {
         // Regression test: French/accented characters (U+0080-U+00FF range) stored as
-        // raw UTF-8 bytes in a save file must survive a full parse → serialize cycle
+        // raw UTF-8 bytes in a save file must survive a full parse -> serialize cycle
         // with their original byte sequences preserved.
         //
-        // The game writes "Étoile" as UTF-8 bytes 0xC3 0x89 0x74 0x6F 0x69 0x6C 0x65.
+        // The game writes U+00C9 + "toile" as UTF-8 bytes 0xC3 0x89 0x74 0x6F 0x69 0x6C 0x65.
         // Our editor reads the file with Latin-1, producing the string containing chars
-        // U+00C3 and U+0089.  The UTF-8 validator then correctly decodes these to É
-        // (U+00C9).  The bug was that the serializer then emitted É as a single byte
+        // U+00C3 and U+0089.  The UTF-8 validator then correctly decodes these to U+00C9
+        // (U+00C9).  The bug was that the serializer then emitted U+00C9 as a single byte
         // 0xC9 (Latin-1) instead of the correct 2-byte UTF-8 sequence 0xC3 0x89.
         //
-        // É = U+00C9, UTF-8: C3 89
-        // à = U+00E0, UTF-8: C3 A0
-        // ç = U+00E7, UTF-8: C3 A7
+        // U+00C9, UTF-8: C3 89
+        // U+00E0, UTF-8: C3 A0
+        // U+00E7, UTF-8: C3 A7
         string latin1Name =
-            (char)0xC3 + "" + (char)0x89 + "toile " +   // Étoile
-            (char)0xC3 + "" + (char)0xA0 + " " +         // à
-            (char)0xC3 + "" + (char)0xA7;                // ç
+            (char)0xC3 + "" + (char)0x89 + "toile " +   // U+00C9 + "toile"
+            (char)0xC3 + "" + (char)0xA0 + " " +         // U+00E0
+            (char)0xC3 + "" + (char)0xA7;                // U+00E7
         string json = "{\"ShipName\": \"" + latin1Name + "\"}";
         var obj = JsonObject.Parse(json);
 
         // Parser decodes to proper Unicode
         string decoded = obj.GetString("ShipName")!;
-        Assert.Equal("\u00C9toile \u00E0 \u00E7", decoded); // "Étoile à ç"
+        Assert.Equal("\u00C9toile \u00E0 \u00E7", decoded); // decoded text matches the escaped expectation
 
         // Serialize back: must emit UTF-8 byte sequences, not single Latin-1 bytes
         string output = obj.ToString();
@@ -9269,11 +9683,11 @@ public class LogicTests
         byte[] outputBytes = latin1Encoding.GetBytes(output);
 
         // The serialized JSON must contain the correct UTF-8 byte pairs
-        // É → 0xC3 0x89
+        // U+00C9 -> 0xC3 0x89
         bool hasE = ContainsBytes(outputBytes, 0xC3, 0x89);
-        // à → 0xC3 0xA0
+        // U+00E0 -> 0xC3 0xA0
         bool hasA = ContainsBytes(outputBytes, 0xC3, 0xA0);
-        // ç → 0xC3 0xA7
+        // U+00E7 -> 0xC3 0xA7
         bool hasC = ContainsBytes(outputBytes, 0xC3, 0xA7);
         Assert.True(hasE, "É must be serialized as UTF-8 bytes 0xC3 0x89, not single byte 0xC9");
         Assert.True(hasA, "à must be serialized as UTF-8 bytes 0xC3 0xA0, not single byte 0xE0");
@@ -9289,8 +9703,8 @@ public class LogicTests
     {
         // Verify byte-level round-trip: serialize + Latin1.GetBytes must produce
         // the exact same byte sequence as the original UTF-8-encoded save data.
-        // É (U+00C9) = UTF-8 0xC3 0x89; must NOT become single byte 0xC9.
-        string latin1 = "" + (char)0xC3 + (char)0x89; // É as raw bytes via Latin-1 window
+        // U+00C9 = UTF-8 0xC3 0x89; must NOT become single byte 0xC9.
+        string latin1 = "" + (char)0xC3 + (char)0x89; // U+00C9 as raw bytes via Latin-1 window
         string json = "{\"Name\": \"" + latin1 + "\"}";
         var obj = JsonObject.Parse(json);
 
@@ -9302,7 +9716,7 @@ public class LogicTests
         var latin1Enc = System.Text.Encoding.GetEncoding(28591);
         byte[] bytes = latin1Enc.GetBytes(serialized);
 
-        // Must contain 0xC3 0x89 (UTF-8 for É), not isolated 0xC9 (Latin-1 for É)
+        // Must contain 0xC3 0x89 (UTF-8 for U+00C9), not isolated 0xC9 (Latin-1 for U+00C9)
         Assert.True(ContainsBytes(bytes, 0xC3, 0x89),
             "É (U+00C9) must be written as UTF-8 bytes 0xC3 0x89, not as single Latin-1 byte 0xC9");
         Assert.False(Array.Exists(bytes, b => b == 0xC9),
@@ -9768,6 +10182,8 @@ public class LogicTests
     [InlineData("Atlantid",            false)]
     [InlineData("Voltaic Staff",       true)]
     [InlineData("Direwasp Disintegrator", false)]
+    [InlineData("Starbound",              false)]
+    [InlineData("Starbound",              true)]
     public void SaveToolData_UniqueModelType_PreservesIsLarge(string typeName, bool originalIsLarge)
     {
         // Unique-model types have their own dedicated resource file; IsLarge has no meaningful
@@ -9781,6 +10197,47 @@ public class LogicTests
         MultitoolLogic.SaveToolData(tool, null, values, false);
 
         Assert.Equal(originalIsLarge, tool.GetBool("IsLarge"));
+    }
+
+    [Fact]
+    public void SaveToolData_PrimaryTypeChange_SyncsCurrentWeaponFilename()
+    {
+        // The game's own saves always keep CurrentWeapon.Filename matching the active
+        // multitool; a mismatch makes the game rebuild the equipped tool on load.
+        var playerState = JsonObject.Parse(@"{
+            ""CurrentWeapon"": {
+                ""Filename"": ""MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN"",
+                ""GenerationSeed"": [true, ""0x0""]
+            }
+        }");
+        var tool = BuildArchiveClassTool("MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN");
+        int switchIdx = Array.FindIndex(MultitoolLogic.ToolTypes, t => t.Name == "Switch");
+        Assert.True(switchIdx >= 0);
+        var values = new MultitoolLogic.ToolSaveValues { TypeIndex = switchIdx };
+
+        MultitoolLogic.SaveToolData(tool, playerState, values, isPrimary: true);
+
+        Assert.Equal(MultitoolLogic.ToolTypes[switchIdx].Filename,
+            playerState.GetObject("CurrentWeapon")!.GetString("Filename"));
+    }
+
+    [Fact]
+    public void SaveToolData_NonPrimaryTypeChange_LeavesCurrentWeaponFilename()
+    {
+        var playerState = JsonObject.Parse(@"{
+            ""CurrentWeapon"": {
+                ""Filename"": ""MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN"",
+                ""GenerationSeed"": [true, ""0x0""]
+            }
+        }");
+        var tool = BuildArchiveClassTool("MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN");
+        int switchIdx = Array.FindIndex(MultitoolLogic.ToolTypes, t => t.Name == "Switch");
+        var values = new MultitoolLogic.ToolSaveValues { TypeIndex = switchIdx };
+
+        MultitoolLogic.SaveToolData(tool, playerState, values, isPrimary: false);
+
+        Assert.Equal("MODELS/COMMON/WEAPONS/MULTITOOL/MULTITOOL.SCENE.MBIN",
+            playerState.GetObject("CurrentWeapon")!.GetString("Filename"));
     }
 
     [Fact]
@@ -11356,12 +11813,12 @@ public class LogicTests
 
         var corvettes = new[]
         {
-            (shipIndex: 5, name: "The Bebop"),
-            (shipIndex: 7, name: "USCSS Abraxas"),
-            (shipIndex: 8, name: "USCSS Solomon"),
+            (shipIndex: 5, name: "The Bebop", expectedMoved: 108),
+            (shipIndex: 7, name: "USCSS Abraxas", expectedMoved: 304),
+            (shipIndex: 8, name: "USCSS Solomon", expectedMoved: 144),
         };
 
-        foreach (var (shipIndex, name) in corvettes)
+        foreach (var (shipIndex, name, expectedMoved) in corvettes)
         {
             int baseIdx = StarshipLogic.FindCorvetteBaseIndex(bases!, shipIndex);
             Assert.True(baseIdx >= 0, $"Base not found for '{name}'");
@@ -11370,9 +11827,10 @@ public class LogicTests
             var objects = baseObj.GetArray("Objects")!;
             int objectCount = objects.Length;
 
-            // Perform the optimise reorder
+            // Perform the optimise reorder and verify the number of moved objects
             int result = StarshipLogic.ReorderBuildingObjects(objects);
-            Assert.Equal(objectCount, result);
+            Assert.Equal(expectedMoved, result);
+            Assert.True(result <= objectCount, $"Ship '{name}': moved {result} exceeds {objectCount} objects");
 
             // Verify priority ordering: each object's priority should be >= the previous
             int prevPriority = 0;
@@ -11408,9 +11866,10 @@ public class LogicTests
     }
 
     [Fact]
-    public void CorvetteE2E_ReferenceSave_OptimiseCorvetteBase_ReturnsCorrectCount()
+    public void CorvetteE2E_ReferenceSave_OptimiseCorvetteBase_ReturnsMovedCount()
     {
-        // Verify OptimiseCorvetteBase works end-to-end and returns the right object count.
+        // Verify OptimiseCorvetteBase works end-to-end and returns the number of
+        // objects whose position changed (counting duplicate part IDs as unmoved).
         var savePath = FindRefPath("_ref", "saves", "original", "save.hg");
         if (savePath == null) return;
 
@@ -11419,21 +11878,20 @@ public class LogicTests
         var psd = save.GetObject("PlayerStateData");
         var bases = psd!.GetArray("PersistentPlayerBases");
 
-        // Expected object counts from the reference save:
-        // Ship 5 "The Bebop" -> 111 objects
-        // Ship 7 "USCSS Abraxas" -> 316 objects
-        // Ship 8 "USCSS Solomon" -> 148 objects
+        // Expected moved-object counts for the reference save. The corvettes have
+        // 111 / 316 / 148 objects respectively; some duplicate part IDs do not
+        // change position, so the moved counts are lower.
         var corvettes = new[]
         {
-            (shipIndex: 5, name: "The Bebop", expectedCount: 111),
-            (shipIndex: 7, name: "USCSS Abraxas", expectedCount: 316),
-            (shipIndex: 8, name: "USCSS Solomon", expectedCount: 148),
+            (shipIndex: 5, name: "The Bebop", expectedMoved: 108),
+            (shipIndex: 7, name: "USCSS Abraxas", expectedMoved: 304),
+            (shipIndex: 8, name: "USCSS Solomon", expectedMoved: 144),
         };
 
-        foreach (var (shipIndex, name, expectedCount) in corvettes)
+        foreach (var (shipIndex, name, expectedMoved) in corvettes)
         {
             int result = StarshipLogic.OptimiseCorvetteBase(bases, shipIndex);
-            Assert.Equal(expectedCount, result);
+            Assert.Equal(expectedMoved, result);
         }
     }
 
@@ -11454,7 +11912,7 @@ public class LogicTests
 
         // Ship 5 = "The Bebop"
         int result = StarshipLogic.OptimiseCorvetteBase(bases, 5);
-        Assert.Equal(111, result);
+        Assert.Equal(108, result);
 
         // Get the optimised objects
         int baseIdx = StarshipLogic.FindCorvetteBaseIndex(bases!, 5);
@@ -11500,7 +11958,7 @@ public class LogicTests
 
         // Ship 5 = "The Bebop"
         int result = StarshipLogic.OptimiseCorvetteBase(bases, 5);
-        Assert.Equal(111, result);
+        Assert.Equal(108, result);
 
         int baseIdx = StarshipLogic.FindCorvetteBaseIndex(bases!, 5);
         var baseObj = bases!.GetObject(baseIdx);
@@ -12771,8 +13229,8 @@ public class LogicTests
         var db = BuildTestDatabase();
 
         var cargoInv = BuildInventory(
-            ("^FUEL1",      50, 500, 0, "Substance"),   // cargo item  — should be refilled
-            ("^HYPERDRIVE", 10, 200, 0, "Technology")   // tech in cargo — must NOT be refilled
+            ("^FUEL1",      50, 500, 0, "Substance"),   // cargo item  - should be refilled
+            ("^HYPERDRIVE", 10, 200, 0, "Technology")   // tech in cargo - must NOT be refilled
         );
         var ps = BuildPlayerState(cargoInv: cargoInv);
 

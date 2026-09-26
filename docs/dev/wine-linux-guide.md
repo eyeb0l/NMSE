@@ -2,7 +2,7 @@
 
 A comprehensive guide to running NMSE (No Man's Save Editor) on Linux using Wine.
 
-> **Note:** This is an interim solution. A native cross-platform version using Eto.Forms is planned - see the [Cross-Platform Work Plan](cross-platform-workplan.md) for details.
+> **Note:** NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review.
 
 ---
 
@@ -106,7 +106,7 @@ mkdir -p ~/NMSE && cd ~/NMSE
 #   https://github.com/vectorcmdr/NMSE/releases
 #
 # Or use the GitHub API to find and download the latest release zip:
-DOWNLOAD_URL=$(curl -s https://api.github.com/repos/vectorcmdr/NMSE/releases/tags/latest \
+DOWNLOAD_URL=$(curl -s https://api.github.com/repos/vectorcmdr/NMSE/releases/latest \
   | grep -o '"browser_download_url": "[^"]*\.zip"' \
   | head -1 | cut -d'"' -f4)
 wget "$DOWNLOAD_URL" -O NMSE-latest.zip
@@ -171,14 +171,18 @@ An AppImage bundles NMSE together with Wine into a single executable file. No Wi
 ### Step 1: Download
 
 ```bash
-wget https://github.com/vectorcmdr/NMSE/releases/download/latest/NMSE-x86_64.AppImage
-chmod +x NMSE-x86_64.AppImage
+# Resolve the latest AppImage asset from the GitHub API:
+DOWNLOAD_URL=$(curl -s https://api.github.com/repos/vectorcmdr/NMSE/releases/latest \
+  | grep -o '"browser_download_url": "[^"]*\.AppImage"' \
+  | head -1 | cut -d'"' -f4)
+wget "$DOWNLOAD_URL" -O NMSE.AppImage
+chmod +x NMSE.AppImage
 ```
 
 ### Step 2: Run
 
 ```bash
-./NMSE-x86_64.AppImage
+./NMSE.AppImage
 ```
 
 That's it. The AppImage contains everything needed.
@@ -256,7 +260,7 @@ Z:\home\<username>\.local\share\Steam\steamapps\compatdata\275850\pfx\drive_c\us
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| All 20 editor panels | ✅ Works | Tabs, controls, data display all function correctly |
+| All 16 editor tabs (and their sub-panels) | ✅ Works | Tabs, controls, data display all function correctly |
 | Save file loading/saving | ✅ Works | .NET file I/O translates seamlessly |
 | Inventory grid (custom GDI+ rendering) | ✅ Works | Wine's GDI+ implementation handles this well |
 | Icons and images | ✅ Works | PNG loading via .NET managed code |
@@ -363,7 +367,7 @@ NMSE must be published as a self-contained Windows x64 build to run under Wine:
 # On Windows (or WSL2 with .NET SDK):
 dotnet publish NMSE.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=false
 
-# The output at bin/Release/net10.0-windows/win-x64/publish/ contains:
+# The output at Build/bin/Release/net10.0-windows/win-x64/publish/ contains:
 # - NMSE.exe (the application)
 # - Resources/ (icons, JSON databases, localisation files)
 # - *.dll (framework and dependency assemblies)
@@ -375,7 +379,7 @@ dotnet publish NMSE.csproj -c Release -r win-x64 --self-contained -p:PublishSing
 
 ## Known Limitations
 
-These are inherent limitations of running a WinForms app under Wine. They will be resolved when the native Eto.Forms port is complete.
+These are inherent limitations of running a WinForms app under Wine.
 
 1. **Windows-style UI** - NMSE looks like a Windows application (Windows title bars, Windows-style file dialogs) rather than a native Linux app.
 
@@ -391,13 +395,6 @@ These are inherent limitations of running a WinForms app under Wine. They will b
 
 ---
 
-## Future: Native Linux Support
+## Native Port
 
-The Wine compatibility layer is an interim solution. The planned native cross-platform version will:
-
-- Use **Eto.Forms** for the UI (native GTK on Linux, Cocoa on macOS, WinForms on Windows)
-- Share all business logic via **NMSE.Lib** (platform-independent shared library)
-- Look and feel native on each platform
-- Be ~50 MB instead of ~300–500 MB
-
-See the [Cross-Platform Work Plan](cross-platform-workplan.md) for the full migration roadmap.
+The Wine compatibility layer works well, but a native Linux build would remove the Wine dependency. Options are under review and there is no current plan.

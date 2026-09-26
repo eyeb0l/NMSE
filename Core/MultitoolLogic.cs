@@ -39,6 +39,7 @@ internal static class MultitoolLogic
         ("Atlantid", "MODELS/COMMON/WEAPONS/MULTITOOL/ATLASMULTITOOL.SCENE.MBIN"),
         ("Voltaic Staff", "MODELS/COMMON/WEAPONS/MULTITOOL/STAFFMULTITOOLATLAS.SCENE.MBIN"),
         ("Direwasp Disintegrator", "MODELS/COMMON/WEAPONS/MULTITOOL/SWARMMULTITOOL.SCENE.MBIN"),
+        ("Starbound", "MODELS/COMMON/WEAPONS/MULTITOOL/RETROMULTITOOL.SCENE.MBIN"),
     };
 
     internal static readonly Dictionary<string, string> ToolTypeLocKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -59,6 +60,7 @@ internal static class MultitoolLogic
         ["Atlantid"] = "multitool.type_atlantid",
         ["Voltaic Staff"] = "multitool.type_voltaic_staff",
 		["Direwasp Disintegrator"] = "multitool.type_direwasp",
+		["Starbound"] = "multitool.type_starbound",
 	};
 
     internal static string GetLocalisedToolTypeName(string internalName)
@@ -289,6 +291,19 @@ internal static class MultitoolLogic
             // NMS 3.81+ (Sentinel): multitool resource is under Resource.Filename
             var resource = tool.GetObject("Resource");
             resource?.Set("Filename", ToolTypes[values.TypeIndex].Filename);
+
+            // If primary tool, keep CurrentWeapon.Filename in sync with the new model.
+            // The game's own saves always have CurrentWeapon matching the active tool;
+            // a mismatch makes the game rebuild the equipped multitool on load.
+            if (isPrimary && playerState != null)
+            {
+                try
+                {
+                    var currentWeapon = playerState.GetObject("CurrentWeapon");
+                    currentWeapon?.Set("Filename", ToolTypes[values.TypeIndex].Filename);
+                }
+                catch { }
+            }
         }
 
         // IsLarge controls the body shape for the shared-model multitools (MULTITOOL.SCENE.MBIN).
@@ -298,7 +313,7 @@ internal static class MultitoolLogic
             tool.Set("IsLarge", true);
         else if (values.IsLargeIndex == 1)
             tool.Set("IsLarge", false);
-        // IsLargeIndex = -1: no selection – leave the save value untouched.
+        // IsLargeIndex = -1: no selection - leave the save value untouched.
 
         try
         {
@@ -550,6 +565,50 @@ internal static class MultitoolLogic
     }
 
     /// <summary>
+    /// Resolves the archived <c>WeaponStatClass</c> value the game writes for a multitool.
+    /// Unique-model tools map from their resource file; shared-model tools use the same
+    /// stat-based Pistol/Rifle/Alien/Pristine detection as <see cref="LoadToolData"/>.
+    /// </summary>
+    /// <param name="tool">The JSON object representing the multitool.</param>
+    /// <returns>The weapon stat class enum name (e.g. "Pistol", "Rifle").</returns>
+    internal static string GetArchivedWeaponClass(JsonObject tool)
+    {
+        string filename = "";
+        try { filename = tool.GetObject("Resource")?.GetString("Filename") ?? ""; } catch { }
+
+        // Unique-model classes below match the game's own reward table (GcRewardSpecificWeapon),
+        // which uses Rifle for the Switch and Swarm models and Staff for every staff variant.
+        if (filename.Contains("SENTINELMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Robot";
+        if (filename.Contains("SWITCHMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Rifle";
+        if (filename.Contains("ROYALMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Royal";
+        if (filename.Contains("STAFF", StringComparison.OrdinalIgnoreCase))
+            return "Staff";
+        if (filename.Contains("ATLASMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Atlas";
+        if (filename.Contains("SWARMMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Rifle";
+        if (filename.Contains("RETROMULTITOOL", StringComparison.OrdinalIgnoreCase))
+            return "Pistol";
+
+        // Shared procedural model: the game derives the class from the base stats.
+        var data = LoadToolData(tool);
+        if (data.TypeIndex >= 0 && data.TypeIndex < ToolTypes.Length)
+        {
+            return ToolTypes[data.TypeIndex].Name switch
+            {
+                "Rifle" => "Rifle",
+                "Alien" => "Alien",
+                "Pristine" => "Pristine",
+                _ => "Pistol",
+            };
+        }
+        return "Pistol";
+    }
+
+    /// <summary>
     /// Moves a multitool from Multitools into an ArchivedMultitools slot.
     /// Copies the tool data into the archive slot and resets the source slot.
     /// </summary>
@@ -578,29 +637,11 @@ internal static class MultitoolLogic
         }
         catch { }
 
-        // WeaponClass: set from Resource filename or default Pistol
+        // WeaponClass: match the value the game itself writes when archiving.
         try
         {
-            string filename = tool.GetObject("Resource")?.GetString("Filename") ?? "";
-            string weaponClass = "Pistol";
-            if (filename.Contains("SENTINELMULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Robot";
-            else if (filename.Contains("SWITCHMULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Rifle";
-            else if (filename.Contains("ROYALMULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Royal";
-            else if (filename.Contains("STAFFMULTITOOLATLAS", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "StaffAtlas";
-            else if (filename.Contains("STAFFMULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Staff";
-            else if (filename.Contains("ATLASMULTITOOL", StringComparison.OrdinalIgnoreCase) && !filename.Contains("STAFF", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Atlas";
-            else if (filename.Contains("SWARMMULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Robot";
-            else if (filename.Contains("MULTITOOL", StringComparison.OrdinalIgnoreCase))
-                weaponClass = "Pistol";
             var wc = archivedSlot.GetObject("WeaponClass");
-            wc?.Set("WeaponStatClass", weaponClass);
+            wc?.Set("WeaponStatClass", GetArchivedWeaponClass(tool));
         }
         catch { }
 

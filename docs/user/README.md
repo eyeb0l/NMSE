@@ -10,6 +10,7 @@ This guide walks you through every feature of the application so you can confide
 - [Getting Started][getting-started]
 - [Opening a Save File][opening-save]
 - [Saving Your Changes][saving-changes]
+- [Backups & Restoring][backups]
 - [Tabs Overview][tabs-overview]
 - **Editing Guides:**
   - [Player Stats][player-stats]
@@ -20,15 +21,17 @@ This guide walks you through every feature of the application so you can confide
   - [Exocraft (Vehicles)][exocraft]
   - [Companions (Pets)][companions]
   - [Bases & Storage][bases]
-  - [Catalogue (Technologies, Products, Words, Glyphs, Locations, Fishing & Recipes)][catalogue]
+  - [Catalogue (Technologies, Products, Specials, Words, Glyphs, Locations, Fishing, Recipes, Wonders, Knowledge, Fossils, Raw Materials & Stats)][catalogue]
   - [Milestones][milestones]
   - [Settlements][settlements]
   - [ByteBeats][bytebeat]
   - [Account Rewards][account]
   - [Export Settings][export-config]
   - [Raw JSON Editor][raw-json]
+  - [Database Search][database-search]
 - [Importing & Exporting Inventories][import-export]
-- [Changing Language][language]
+- [Language & Theme][language]
+- [Keeping NMSE Updated][keeping-updated]
 - [Frequently Asked Questions][faq]
 
 ---
@@ -59,51 +62,16 @@ NMSE can edit save files from all platforms that *No Man's Sky* supports:
 | Steam | ✅ | ✅ | Saves found automatically |
 | GOG | ✅ | ✅ | Saves found automatically |
 | Xbox Game Pass | ✅ | ✅ | Saves found automatically |
-| PlayStation 4 | ✅ | - | Requires manual file transfer (SW or HB) |
-| Nintendo Switch | ✅ | - | Requires manual file transfer |
-
----
-
-## Changing Language
-
-NMSE supports the **16 game languages**. To change the display language:
-
-1. Click **Language** in the menu bar
-2. Select your preferred language from the list
-
-The entire application - menus, labels, item names, and descriptions - will update to the selected language.
-
-### Supported Languages
-
-| Language | Code |
-|----------|------|
-| English (UK) | en-GB |
-| English (US) | en-US |
-| French | fr-FR |
-| Italian | it-IT |
-| German | de-DE |
-| Spanish | es-ES |
-| Spanish (Latin America) | es-419 |
-| Portuguese | pt-PT |
-| Portuguese (Brazil) | pt-BR |
-| Russian | ru-RU |
-| Polish | pl-PL |
-| Dutch | nl-NL |
-| Simplified Chinese | zh-CN |
-| Traditional Chinese | zh-TW |
-| Japanese | ja-JP |
-| Korean | ko-KR |
+| PlayStation 4 | ✅ | - | Requires manual file transfer - supports `memory.dat`, SaveWizard `NOMANSKY` `.hg` and homebrew `savedataNN.hg` files |
+| Nintendo Switch | ✅ | - | Requires manual file transfer - detected from `savedataNN.hg` and matching `manifestNN.hg` files |
 
 ---
 
 ## Opening a Save File
 
-### Your save directory and files should be auto detected and displayed.
-### If they are, click <kbd>Load</kbd> and you're good to go.
+Your save directory and files should be auto-detected and shown in the toolbar. The toolbar has two rows: **Directory** and **Backup** on the first row, then **Save Slot**, **File**, <kbd>Load</kbd> and <kbd>Save</kbd> on the second row.
 
-<br>
-
-If they aren't, there are two ways to open your save files:
+If a save and slot are already selected, click <kbd>Load</kbd> and you're good to go. If they aren't, there are two ways to open your save files:
 
 ### Method 1: Open Save Directory (Recommended)
 
@@ -112,6 +80,8 @@ If they aren't, there are two ways to open your save files:
 3. A list of available save slots will appear in the UI
 4. Select the save slot and save file you want to edit
 5. Click <kbd>Load</kbd>
+
+While no save is loaded, every editing tab shows a no-save overlay and its controls are greyed out. **Export Settings** and **Database Search** stay usable because they do not need a save.
 
 > ℹ️ Save folders under Linux (using the AppImage, you can browse with either / or Z:).
 > 
@@ -128,7 +98,20 @@ If they aren't, there are two ways to open your save files:
 2. Browse to the save file on your computer
 3. Select the file and click **Open**
 
-*Use this method for PlayStation or Nintendo Switch saves that you've copied to your PC.*
+*Use this method for PlayStation or Nintendo Switch saves that you've copied to your PC. PS4 users can open `memory.dat` directly (the Save Slot and File combos then show Auto/Manual saves), or an individual `savedataNN.hg`. Switch saves use `savedataNN.hg` with a matching `manifestNN.hg`. SaveWizard `NOMANSKY` `.hg` files are written back in the same format.*
+
+### Platform File Layouts
+
+Save files differ between platforms. NMSE auto-detects the layout when you open a directory:
+
+| Platform | Files | Notes |
+|----------|-------|-------|
+| Steam / GOG | `save.hg`, `save2.hg`, ... plus `mf_*.hg` meta files | Steam uses `st_<steamid>` folders, GOG uses `DefaultUser` |
+| Xbox Game Pass | `containers.index` plus GUID-named save blobs | Usually under `%LOCALAPPDATA%\Packages\HelloGames*\SystemAppData\wgs\<id>\` |
+| PlayStation 4 | `memory.dat`, `savedataNN.hg` (HTOS/homebrew), or SaveWizard `NOMANSKY` `.hg` | `memory.dat` holds up to 5 slots, each with an auto and a manual save |
+| Nintendo Switch | `savedataNN.hg` data files with matching `manifestNN.hg` files | Game slots start at `savedata02.hg`; `savedata00.hg` is settings |
+
+When you select a PS4 `memory.dat` slot, the **Save Slot** combo lists the game slot and the **File** combo lists its **Auto** and **Manual** saves for you to load.
 
 ---
 
@@ -136,17 +119,39 @@ If they aren't, there are two ways to open your save files:
 
 After making edits, save your changes using one of these methods:
 
-- <kbd>File > Save</kbd> - Overwrites the original file (a backup is created automatically)
+- <kbd>File > Save</kbd> - Overwrites the original file (a ZIP backup is created automatically)
 - <kbd>File > Save As</kbd> - Save to a new location without overwriting the original
 
-> ⚠️ **Important:** While NMSE creates automatic backups, it's good practice to keep your own copy as well. Always keep a backup of your original save files before editing. 
+> ⚠️ **Important:** While NMSE creates automatic backups, it's good practice to keep your own copy as well. Always keep a backup of your original save files before editing.
 
-### Restoring Backups
+---
 
-If something goes wrong, you can restore from a backup:
+## Backups & Restoring
 
-- <kbd>Edit > Restore Backup (All)</kbd> - Restore all save slots from backup
-- <kbd>Edit > Restore Backup (Single)</kbd> - Restore just the current save slot
+Every time you save, NMSE creates a timestamped ZIP backup of the save directory. The **10 most recent** backups for each save folder are kept, and older ones are deleted automatically.
+
+### Where Backups Live
+
+Backups are written to the first usable location in this order:
+
+1. The **Backup** folder selected by the **Backup:** combo on the toolbar
+2. A `Save Backups` folder next to `NMSE.exe`
+3. A `Save Backups` folder under your TEMP directory (a last-resort fallback so backups are never silently skipped)
+
+If you move your saves around, check the **Backup:** combo so your backups stay where you expect them.
+
+### Choosing a Backup to Restore
+
+If something goes wrong, you can restore from a backup via the **Edit** menu:
+
+- <kbd>Edit > Restore Backup (All)</kbd> - pick a backup, then restore every file it contains (save files, meta files and account data) back into the save directory
+- <kbd>Edit > Restore Backup (Single)</kbd> - pick a backup, then restore only the currently loaded save file
+
+Both options open the **Backup Picker**, which lists the available backups newest first with their created time, size and location. Select the one you want and confirm.
+
+| Backup Picker |
+|-------|
+| <img src="../img/backup-picker-dialog.png"> |
 
 ---
 
@@ -157,33 +162,36 @@ Most sections support export and import in different ways (with cross-editor com
 
 | Tab | What It Does |
 |-----|-------------|
-| **Player** | Health, currencies, game mode, coordinates, guides, titles, save tools |
+| **Player** | Health, currencies, difficulty presets, coordinates, outfits, guides, titles, multiplayer (experimental), save tools |
 | **Exosuit** | Personal exosuit inventory and technology |
-| **Multi-tools** | Multi-tool selection, stats, seeds, and inventory |
-| **Starships** | Ship selection, stats, seeds, and inventory |
+| **Multi-tools** | Multi-tool selection, stats, seeds, archive, and inventory |
+| **Starships** | Ship selection, stats, seeds, customisation, archive, and inventory |
 | **Fleet** | Freighter, frigates, and squadron stats, seeds, and inventories |
-| **Exocraft** | Exocraft vehicle inventories |
+| **Exocraft** | Exocraft vehicle inventories and summoning stations |
 | **Companions** | Companion management, creature creator, pet battles |
-| **Bases & Storage** | Bases and NPCs, chest inventories and storage containers |
-| **Catalogue** | Words, glyphs, teleport locations, recipes, fish, product and technology catalogue |
+| **Bases & Storage** | Bases and NPCs, base objects, space stations and POIs, chest inventories and storage containers |
+| **Catalogue** | Known technologies, products, specials, words, glyphs, teleport locations, fishing, recipes, wonders, collected knowledge, fossils, raw materials and discovery stats |
 | **Milestones** | Journey milestones and statistics |
 | **Settlements** | Settlement management and building editor |
 | **ByteBeats** | ByteBeat music library editor |
 | **Account Rewards** | Platform and season rewards |
 | **Export Settings** | Custom export/import settings |
 | **Raw JSON Editor** | Advanced JSON tree editor for power users |
+| **Database Search** | Read-only search of the whole item database (no save required) |
 
-> 💡 **Tip:** Tabs load their data when you first click on them to save on initial load time, so switching tabs may take a brief moment the first time but won't again after that.
+Most tabs also have sub-tabs, for example Player (General, Guides, Titles, Multiplayer), Starships (Ship Details, Customisation), Exocraft (Exocrafts, Summoning Stations) and Bases & Storage (Bases, Chests, Storage, Systems).
 
-| General |
-|-------|
-| <img src="../img/player-general.png"> |
+> 💡 **Tip:** Tabs load their data when you first click on them to save on initial load time, so switching tabs may take a brief moment the first time but won't again after that. The Catalogue tab is unloaded again when you leave it to keep memory use down, so it reloads when you return to it.
+
+### GOTO JSON Navigation
+
+Most panels have a small bookmark button that jumps straight to the matching data in the Raw JSON Editor. NMSE asks you to confirm first, then syncs every panel's edits to the in-memory JSON, switches to the Raw JSON Editor and highlights the target node. Use it when you want to inspect or hand-edit exactly what a panel controls.
 
 ---
 
 ## Player Stats
 
-The **Player** tab lets you edit your character's core stats, game settings, unlocked guides and titles.
+The **Player** tab lets you edit your character's core stats, game settings, outfits, unlocked guides and titles.
 
 | General | Guide | Titles |
 |-------|-------|-------|
@@ -200,32 +208,69 @@ The **Player** tab lets you edit your character's core stats, game settings, unl
 | **Nanites** | Nanite clusters currency for technology upgrades |
 | **Quicksilver** | Premium currency earned from missions for synthesis |
 | **Save Name** | The name of the save file |
-| **Game Mode** | Normal, Survival, Permadeath, Creative, or Custom |
+| **Save Summary** | The summary text stored for the save |
+| **Total Play Time** | Total play time recorded for the save |
+| **Third Person Camera** | Whether the character uses the third person camera |
+| **Last Save Date** | When the game last wrote the save |
+| **Current Preset** | The active difficulty preset (Normal, Relaxed, Survival, Permadeath, Creative or Custom). Changing it also updates the save's Game Mode |
+| **Easiest Used** | The easiest difficulty preset this save has used |
+| **Hardest Used** | The hardest difficulty preset this save has used |
+| **Expedition Number** | The expedition (season) number for the save |
+| **Account Name** | The account name recorded in the save |
+| **Outfits** | Select, Export, Import and Copy to Custom Data player outfits |
 | **Player State** | Your current state (on foot, in ship, etc.) |
+| **Portal Interference Active** | Whether portal interference is active |
+| **Enable Purple System Warping** | Enables warping to purple systems |
 | **Space Battle** | Trigger a space battle event |
 
 ### Editing Coordinates
 
 You can change your galactic position by editing the coordinate fields. This lets you teleport to specific systems or planets.
 
-Current Coordinates shows your current location and details.  You can manually edit and apply coordinates from the right hand column via the number fields, or via glyph buttons.<br>
+Current Coordinates shows your current location and details. You can manually edit and apply coordinates from the right hand column via the number fields, or via glyph buttons.<br>
+The <kbd>Convert to Coords</kbd> button turns a 12-character portal code into coordinates, and the galaxy row shows the galaxy name with an indicator dot.<br>
 As an additional bit of fun, you can use the `Coordinate Roulette!` button to send yourself somewhere completely random (_you will be prompted to confirm_).
 
 > ⚠️ **Caution:** Changing coordinates will move you to a different location in the galaxy. Make sure you know where you want to go!
 
+### Outfits
+
+The **Outfits** row on the General tab manages your saved player outfits:
+
+- Pick an outfit from the dropdown to select it
+- <kbd>Export</kbd> saves the selected outfit to a file and <kbd>Import</kbd> loads one from a file
+- <kbd>Copy to Custom Data</kbd> copies the selected outfit into the save's custom data so the character uses it
+
 ### Advanced Save Utilities
 
-You can copy, move slot, swap slot, delete and platform transfer a save from here.
+The **Advanced Save Utilities** section works on the save directory rather than just the loaded save:
+
+- <kbd>Copy Slot</kbd>, <kbd>Move Slot</kbd>, <kbd>Swap Slots</kbd> and <kbd>Delete Slot</kbd> act on the source and destination slots you pick (up to 15 slots are supported)
+- <kbd>Transfer to Platform...</kbd> copies the current save into another platform's format (Steam, GOG, Xbox Game Pass, PS4 or Switch). Pick the destination platform, then the destination folder and slot
+
+After an operation completes, the save directory is reloaded so the UI reflects the new slot layout.
 
 > ⚠️ **Caution:** Ensure you have a backup of your save when using this utility! It performs complex operations for advanced users only.
 
 ### Guide Tab
 
-You can set the status of guide topics in the games UI for your save from this panel. The filter search allows you to filter the list.
+Each guide category has its own grid with **Seen** and **Unlocked** columns for every topic. Use the filter box to find topics, or <kbd>Unlock All</kbd> / <kbd>Lock All</kbd> to change the whole list at once.
 
 ### Titles Tab
 
-Allows the unlock of titles for your player.
+The titles grid shows the title ID, title, description and an **Unlocked** checkbox per row. Use <kbd>Unlock All</kbd> / <kbd>Lock All</kbd> to change every title at once.
+
+### Multiplayer (Experimental)
+
+The **Multiplayer** sub-tab edits Swarm co-op keys stored under `CommonStateData.SeasonData`: team configuration (community team, team ship seeds and palettes), purchase and transfer restrictions, player setup (forced race, weapon and ship seeds) and other co-op state.
+
+> ⚠️ **Warning:** This panel is entirely experimental and results are not guaranteed. Some values are enforced by the game and cannot be changed.
+>
+> You must tick the confirmation checkbox before the controls unlock, and NMSE recommends backing up your save before making any changes here.
+
+| Multiplayer (Experimental) |
+|-------|
+| <img src="../img/player-multiplayer.png"> |
 
 ---
 
@@ -257,6 +302,8 @@ The **Exosuit** tab shows your personal inventory in a visual grid layout.
 2. Use the item picker dialog to search for items
 3. Select the item and confirm with <kbd>Add Item</kbd>
 
+The picker shows an icon, name, category and ID for each item, supports selecting several items at once, and includes a manual **Item ID** box for adding an item by ID when you know it.
+
 > 💡 **Tip:** You can search items by name using the search bar in the item picker.
 
 ### Resizing Inventory
@@ -267,15 +314,35 @@ The **Exosuit** tab shows your personal inventory in a visual grid layout.
 
 - Cargo and Technology inventories allow you to export and import an inventory layout via the <kbd>Import</kbd> and <kbd>Export</kbd> buttons.
 
-### Sort and Auto-Stack
+### Inventory Slot Actions
 
-- Exosuit Cargo has a <kbd>Sort</kbd> control at the top of the grid
-- The <kbd>Auto-Stack</kbd> button moves matching items from Exosuit Cargo to Chests, Starship Cargo, or Freighter Cargo
-- The Exosuit Cargo context menu can also auto-stack only the slot you right-clicked
+The grid actions shared by every inventory panel are available from the right-click menu on a slot:
+
+- <kbd>Add Item</kbd> / <kbd>Remove Item</kbd> - add an item via the picker or clear the slot
+- <kbd>Enable/Disable Slot</kbd> and <kbd>Enable All Slots</kbd> - toggle whether a slot is usable in game
+- <kbd>Repair Slot</kbd> / <kbd>Repair All Slots</kbd> - repair damaged technology
+- <kbd>Supercharge Slot</kbd> / <kbd>Supercharge All Slots</kbd> (technology grids only) - move the supercharged slot. Supercharging is disabled on cargo, chest and storage grids because the game fixes those slots
+- <kbd>Fill Stack</kbd> / <kbd>Refill All Stacks</kbd> - fill the slot or every stack to its maximum
+- <kbd>Recharge All Technology</kbd> - recharge all technology in the grid
+- <kbd>Copy Item</kbd> / <kbd>Paste Item</kbd> - copy an item between slots
+- <kbd>Pin Slot</kbd> - keep a slot in place for auto-stack (Exosuit and Starship cargo grids)
+- <kbd>Sort by Name</kbd> / <kbd>Sort by Category</kbd> - sort the grid
+
+The same recharge, refill and repair actions are also available from the <kbd>Tools</kbd> menu for the whole save.
+
+### Inventory Grid Sort, Auto-Stack and Pinned Slots
+
+These behaviours are shared across the cargo grids (see Exosuit for the slot actions):
+
+- Cargo grids have a <kbd>Sort</kbd> control at the top of the grid (None, Name or Category)
+- The <kbd>Auto-Stack</kbd> button moves matching items to the destinations allowed for that inventory:
+  - Exosuit Cargo: Chests, Starship Cargo or Freighter Cargo
+  - Starship Cargo: Chests or Freighter Cargo
+- The context menu can also auto-stack only the slot you right-clicked
 - You can pin a slot from the context menu. Pinned slots are ignored by auto-stack
 - If you use the single-slot auto-stack action on a pinned slot, the action is blocked
 - If the destination stack becomes full, the extra items go to another free slot in the same destination when possible
-- If there is no valid free slot, the remaining items stay in Exosuit Cargo
+- If there is no valid free slot, the remaining items stay in the source inventory
 
 ---
 
@@ -291,8 +358,9 @@ The **Multi-tools** tab lets you manage your collection of multi-tools.
 
 | Field | Description |
 |-------|-------------|
-| **Name** | Your multitool's custom name |
-| **Type** | Rifle, Pistol, Experimental, Alien, Royal, etc. |
+| **Name** | Your multi-tool's custom name |
+| **Type** | Standard, Rifle, Royal, Alien, Experimental, Sentinel, Atlantid, Staff variants (Autophage), Direwasp Disintegrator, Starbound, etc. |
+| **Size** | The multi-tool body size used by the shared model |
 | **Class** | C, B, A, or S class |
 | **Seed** | The procedural generation seed (changes appearance etc.) |
 | **Base Stats** | Damage, Mining, and Scan stats |
@@ -302,7 +370,7 @@ Editing the inventory works the same as the other inventory panels (see Exosuit)
 
 ### Switching Multi-tools
 
-Use the dropdown at the top to switch between your multi-tools. The inventory grid below will update to show the selected multitool's contents.
+Use the dropdown at the top to switch between your multi-tools. The inventory grid below will update to show the selected multi-tool's contents.
 
 ### Managing Multi-tools
 
@@ -311,6 +379,17 @@ Delete a multi-tool with the <kbd>Delete</kbd> button.
 Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
 
 Set the selected multi-tool to the primary multi-tool with the <kbd>Make Primary</kbd> button.
+
+Changing the **Type** updates the tool's model and **Size** as well as its stats. If you change the primary multi-tool, NMSE keeps the equipped weapon data in sync so the game does not rebuild it on load.
+
+### Multi-tool Archive
+
+The game limits how many multi-tools you can carry, so NMSE provides an archive:
+
+- <kbd>Move Selected to Archive</kbd> stores the selected multi-tool in the archive
+- <kbd>Import from Archive to Empty Slot</kbd> lets you pick an archived multi-tool and restores it into the first free slot
+
+Your **primary** multi-tool cannot be archived, and the last remaining multi-tool cannot be archived either, so make a different tool primary first.
 
 ### Changing Multi-tool Seed
 
@@ -333,7 +412,7 @@ The **Starships** tab lets you manage up to 12 starships in your collection, inc
 | Field | Description |
 |-------|-------------|
 | **Name** | Your ship's custom name |
-| **Type** | Fighter, Explorer, Hauler, Shuttle, Exotic, Solar, Interceptor, Living Ship |
+| **Type** | Fighter, Explorer, Hauler, Shuttle, Exotic, Solar, Sentinel, Corvette, Living Ship and specials such as the Utopia Speeder, Golden Vector, Starborn Runner/Phoenix, Boundary Herald, The Wraith and Vintage Interceptor |
 | **Class** | C, B, A, or S class |
 | **Seed** | The procedural generation seed (changes appearance) |
 | **Base Stats** | Damage, Shield, Hyperdrive, and Manoeuvrability stats |
@@ -353,19 +432,41 @@ Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
 
 Set the selected ship to the primary starship with the <kbd>Make Primary</kbd> button.
 
+### Ship Archive
+
+The game limits how many ships you can claim, so NMSE provides an archive:
+
+- <kbd>Move Selected to Archive</kbd> stores the selected ship in the archive (cargo is lost when archiving)
+- <kbd>Import from Archive to Empty Slot</kbd> lets you pick an archived ship and restores it into the first free slot
+
+Your **primary** ship cannot be archived, and corvettes cannot be archived at all because the game does not support it.
+
+### Ship Customisation
+
+For ships that support it, the **Customisation** tab offers deeper appearance editing than the seed alone:
+
+- Pick the **Ship Scene (Model) Resource** to change the model
+- Choose parts per slot under **Parts**
+- Choose **Texture Options** (paint styles) per texture group
+- Choose colour channels and a **Paint Palette**, plus the solar sail colour where the ship has one
+
+> ⚠️ **Note:** Some part, palette and texture combinations will not work together, and some palettes or textures overwrite particular colour slots with a special colour.
+>
+> Sail colour changes are local only and are not seen by other players.
+>
+> Customisation is not available for Corvette ships because they use a different system.
+
+| Ship Customisation |
+|-------|
+| <img src="../img/starship-customisation.png"> |
+
 ### Cargo Sort and Auto-Stack
 
-- Starship Cargo has a <kbd>Sort</kbd> control at the top of the grid
-- The <kbd>Auto-Stack</kbd> button in Starship Cargo moves matching items to Chests or Freighter Cargo
-- The Starship Cargo context menu can also auto-stack only the slot you right-clicked
-- You can pin a slot from the context menu. Pinned slots are ignored by auto-stack
-- If you use the single-slot auto-stack action on a pinned slot, the action is blocked
-- If the destination stack becomes full, the extra items go to another free slot in the same destination when possible
-- If there is no valid free slot, the remaining items stay in Starship Cargo
+Starship Cargo uses the shared sorting, auto-stack and pinning behaviour described in the Exosuit section, with Chests or Freighter Cargo as auto-stack destinations.
 
 ### Changing Ship Appearance
 
-Changing the **Seed** value will change how your ship looks and it's base stats. Each seed generates a unique combination of parts and colours. You can find seeds shared by the community online to get specific ship appearances.
+Changing the **Seed** value will change how your ship looks and its base stats. Each seed generates a unique combination of parts and colours. You can find seeds shared by the community online to get specific ship appearances.
 
 > 💡 **Tip:** Write down your current seed or export your ship before changing it, so you can go back if you don't like the new one!
 
@@ -381,7 +482,7 @@ Corvette ships are supported with some special considerations:
 
 Corvette type starships allow the following extra features:
 - Snapshot / import a snapshot of the technology and ship status of a corvette, to reduce annoyance from the game jumbling the slots
-- Optimise the build order of base components in the corvette design via the <kbd>Optimise Build</kbd> button. A Tick or Cross indicator shows the current optimisation status
+- Optimise the build order of base components in the corvette design via the <kbd>Optimise Build</kbd> button. A Tick or Cross indicator shows the current optimisation status, and the confirmation reports how many objects were moved (or that the build was already optimised)
 
 | Corvettes |
 |-------|
@@ -406,14 +507,22 @@ Edit your freighter's stats, inventory, technology, and view the functional room
 | **Name** | Your freighter's custom name |
 | **Type** | Tiny, Small, Normal, Capital, Pirate |
 | **Class** | C, B, A, or S class |
-| **Seeds** | The procedural generation seeds (changes crew race, crew appearance, and freighter appearance + stats) |
+| **Seeds** | The procedural generation seeds (changes crew appearance and freighter appearance + stats) |
+| **Crew Race** | The race of the crew NPC on board |
+| **Crew Seed** | Crew NPC seed (changes crew appearance) |
 | **Base Stats** | Hyperdrive and Fleet Coordination stats |
+| **Items** | Number of objects in the freighter base |
 | **Inventory** | Cargo and Technology slots, inventory resize, import / export |
-| **Rooms** | Freighter base room presence |
+| **Rooms** | Freighter base room presence, with GOTO buttons for the JSON data |
 
-Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
+Freighter Cargo has a <kbd>Sort</kbd> control at the top of the grid (see Exosuit for the shared grid actions).
 
-- Freighter Cargo has a <kbd>Sort</kbd> control at the top of the grid.
+### Freighter Base Backup & Restore
+
+The <kbd>Export Freighter</kbd> and <kbd>Import Freighter</kbd> buttons work on the freighter **base** rather than the whole freighter:
+
+- <kbd>Export Freighter</kbd> saves the freighter base to a file (unavailable when no base exists)
+- <kbd>Import Freighter</kbd> restores a saved freighter base over your existing freighter base. It needs an existing freighter base slot to restore into
 
 ### Frigates
 
@@ -431,11 +540,13 @@ Manage your fleet of up to 30 frigates by selecting them from the list.
 | **NPC Race** | Gek, Vy'keen, Korvax |
 | **Seeds** | Home and Model seed (changes appearance + stats) |
 | **Traits** | Special bonuses and abilities |
-| **Stats** | Combat, exploration, industrial, and trade ratings |
-| **Totals** | Total frigate outcome stats |
+| **Stats** | Combat, exploration, industrial, and trade ratings, plus fuel cost, duration, loot, repair, damage reduction and stealth |
+| **Totals** | Expeditions, Successful, Failed and Damaged counts |
+| **Damage** | Current damage state, with a <kbd>Repair</kbd> button |
+| **State** | Idle, On Expedition, Damaged or Awaiting Debrief |
 | **Progress / Mission** | Shows the current frigate mission and level state (Fast forward levels and finish expeditions with buttons) |
 
-> 💡 **Tip:** Because traits determine class for frigates, changing a frigates class runs an algorithm to determine a set of stats for that class and changing traits updates the class.
+> 💡 **Tip:** Because traits determine class for frigates, changing a frigate's class runs an algorithm to determine a set of stats for that class and changing traits updates the class.
 
 Export / Import / Delete and Copy via the <kbd>Export</kbd> and <kbd>Import</kbd>, <kbd>Copy</kbd> and <kbd>Delete</kbd> buttons.
 
@@ -452,6 +563,8 @@ Edit your squadron of up to 4 pilots by selecting them from the list.
 | **Race** | Gek, Vy'keen, Korvax |
 | **Rank** | C, B, A, or S class |
 | **Ship Type** | The type of ship your wingman flies |
+| **NPC Resource** | The NPC model resource used for the pilot |
+| **Ship Resource** | The ship model resource used for the pilot's ship |
 | **NPC Seed** | Pilot NPC seed (changes appearance) |
 | **Ship Seed** | Pilot ship seed (changes appearance) |
 | **Traits Seed** | Pilot NPC stats/traits (changes appearance) |
@@ -470,10 +583,9 @@ The inventories can be Resized, Imported and Exported via the width/height sette
 |-------|-------|
 | <img src="../img/exocraft-cargo.png"> | <img src="../img/exocraft-tech.png"> |
 
-Each exocraft (Roamer, Nomad, Colossus, Pilgrim, Nautilon, Minotaur) has its own inventory section showing installed technology.<br>
-(The unreleased Dragonfly can technically be added through JSON editing)
+Each exocraft (Roamer, Nomad, Colossus, Pilgrim, Nautilon, Minotaur) has its own inventory section showing installed technology.
 
-Use the dropdown at the top of the panel to switch between your ships. Each ship has its own inventory grid.
+Use the dropdown at the top of the panel to switch between your exocraft. Each exocraft has its own inventory grid.
 
 If the exocraft is currently deployed, it will be indicated on the panel and can be undeployed via the <kbd>Undeploy</kbd> button.
 
@@ -485,6 +597,21 @@ The Minotaur AI Pilot can be enabled or disabled by using the <kbd>[ ] Minotaur 
 
 Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
 
+### Summoning Stations
+
+The <kbd>Summoning Stations</kbd> sub-tab lists the exocraft summoning stations stored in your save, split into:
+
+- **Individual Stations** - standalone stations placed in the world
+- **Part of Bases** - stations that belong to one of your bases
+
+Select a station to view its details: name, timestamp, base, galactic address, region seed, position, galaxy, portal code (with glyphs and signal booster address), voxel coordinates, solar system and planet. Use <kbd>Delete Station</kbd> to remove it from the save (with a confirmation prompt), or the GOTO buttons to open the related JSON.
+
+> 💡 **Tip:** Deleting a station that is part of a base removes it from that base, so use <kbd>Delete Station</kbd> carefully.
+
+| Summoning Stations |
+|-------|
+| <img src="../img/exocraft-summoning.png"> |
+
 ---
 
 ## Companions (Pets)
@@ -495,7 +622,7 @@ The system is complex and has some internal game constraints that can be hard to
 
 You can use the <kbd>Creature Builder (Web)</kbd> button above the list of companions and eggs to go to the NMSCD Creature Builder site, and import / set your companions per the site - but be warned that the site has some incorrect identifiers based on model scenes that will need to be substituted.
 
-You can also use the builtin editor to edit came rule compatible creatures. Currently there is no preview for the model though.
+You can also use the builtin editor to edit game rule compatible creatures. Currently there is no preview for the model though.
 
 Via the <kbd>Battle</kbd> tab you can also edit the Xeno Arena pet battle features of your companion pets and your team format.
 
@@ -540,6 +667,15 @@ A creatures model parts / descriptors can be edited per creature with the game f
 Additionally, the accessories of the companion can be set, coloured and reset via the <kbd>Accessory Customisation</kbd> section.
 This includes their move / ability list, mutation progress, stats, class overrides and different displays of ability statistics.
 
+The <kbd>Battle</kbd> tab edits the Xeno Arena battle system for the selected pet:
+
+- Affinity, with its weak and strong matchups
+- Core stat class overrides (health, agility and combat)
+- Treats eaten, genes available and mutation progress
+- Battle victories
+- Per-slot moves, cooldowns and score boosts
+- Your 3-pet battle team format
+
 Export / Import / Delete via the <kbd>Export</kbd>, <kbd>Import</kbd>, and <kbd>Delete</kbd> buttons.
 
 ---
@@ -548,25 +684,43 @@ Export / Import / Delete via the <kbd>Export</kbd>, <kbd>Import</kbd>, and <kbd>
 
 ### Bases Tab
 
-The **Bases** tab shows your base NPCs and their race and seed (editable), as well as your bases information (name).
+The **Bases** tab shows your base NPCs and their race and seed (editable), as well as your base information and objects. Use the dropdown at the top of the Base Info section to switch between your bases.
+It also shows the base version, original base version, galactic address, position and forward vectors, auto power, screenshot position, owner identifiers and last edited information.
 
-Use the dropdown at the top of the Base Info section to switch between your bases.
+It supports all base types (planetary, space, station, freighter, corvette).
 
-Export / Import / via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
+Base types are marked in the list with a prefix: `[F]` freighter, `[S]` space station, `[C]` corvette and `[A]` asteroid/space base. Planetary bases have no prefix.
 
-You can move the base computer to another component's location via the <kbd>Move Base Computer</kbd> button. It will prompt you to select a base component by ID.
+Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
 
-You can also clear terrain edit data at the associated base via the <kbd>Clear Terrain Edits</kbd> button.
+Other base actions:
+
+- Reorder the base list with <kbd>Move Up</kbd>, <kbd>Move Down</kbd>, <kbd>To Top</kbd>, <kbd>To Bottom</kbd>, <kbd>A-Z</kbd> and <kbd>Z-A</kbd>
+- <kbd>Delete Base</kbd> removes the selected base from the save (with a confirmation prompt)
+- <kbd>Summon NPC to Base</kbd> moves the selected NPC worker to the selected base
+- <kbd>Move Base Computer</kbd> moves the base computer to another component's location. It prompts you to select a base component by ID
+- <kbd>Clear Terrain Edits at Base</kbd> clears terrain edits for the selected base
+- <kbd>Clear All Terrain Edits In Save</kbd> and <kbd>Clear All Terrain Edits (Except Bases)</kbd> clear terrain edits across the whole save
 
 | Bases |
 |-------|
 | <img src="../img/bases.png"> |
 
+#### Objects (Advanced)
+
+The **Objects** tab next to the base info is an advanced editor for the objects in the selected base. It shows a filterable object list. Selecting an object shows its Object ID, user data, position, up and at values.
+
+This panel is for advanced users.
+
+| Base Objects |
+|-------|
+| <img src="../img/base-objects.png"> |
+
 ### Chests Tab
 
-You can edit the contents of your numbered storage chests / containers (0–9) via tabs. Each container has its own inventory grid with export, import and usual editing capabilities.
+You can edit the contents of your numbered storage chests / containers (0-9) via tabs. Each container has its own inventory grid with export, import and usual editing capabilities.
 
-Chest inventories also have a <kbd>Sort</kbd> control at the top of the grid.
+Chest inventories also have a <kbd>Sort</kbd> control at the top of the grid, and a GOTO button for the JSON data.
 
 You can edit the names of your storage chests via the fields at the top of the tab.
 
@@ -576,7 +730,7 @@ You can edit the names of your storage chests via the fields at the top of the t
 
 ### Storage Tab
 
-You can edit the contents of your special storage containers. Each container has its own inventory grid with export, import and usual editing capabilities.
+You can edit the contents of your special storage containers. Each container has its own inventory grid with export, import and usual editing capabilities, plus a GOTO button for the JSON data.
 
 | Storages |
 |-------|
@@ -588,16 +742,54 @@ You can edit the contents of your special storage containers. Each container has
 | **Corvette Parts Cache** | Corvette parts cache inventory for building corvette starships |
 | **Base Salvage Capsule** | Salvaged parts capsule from deleted bases |
 | **Rocket** | Rocket inventory |
-| **Fishing Platform (Skiff)** | Fishing platforms inventory |
+| **Fishing Platform** | Fishing platforms inventory |
 | **Fish Bait** | Fishing bait inventory |
 | **Food Unit** | Food unit inventory for cooking |
 | **Freighter Refund (unused)** | Freighter base deletion refund inventory - not used in the game, be careful if choosing to edit! (included for mod support) |
 
+### Systems (Space Stations & Space POIs)
+
+The **Systems** sub-tab at the end of the Bases & Storage panel edits the Cosmos space station and space POI data stored in your save. Select a system from the list on the left - systems are named from the station base, your discoveries, or the portal code when no name is known.
+
+#### Space Stations
+
+- View the system address, portal code and glyphs
+- Edit the seven station stats, including Vy'keen, Gek and Korvax standing, mercenary and merchant guild standing, and space POI missions
+- Set the station mission states (Claim Station Tutorial, Space Base Tutorial and Station Own Wiki) to Not Started, Active or Completed
+- <kbd>Set Claimable Values</kbd> raises the stats to the minimum values needed to claim the station (guild standing 15, race standing 30, space POI missions 5) without lowering values that are already higher
+- <kbd>Go to Base in Bases Tab</kbd> jumps to the matching station base
+
+| Space Stations |
+|-------|
+| <img src="../img/systems-stations.png"> |
+
+#### Space POIs
+
+Space POI discovery data is stored as two packed bitflag integers (Packed Data 0 and 1). You can enter a decimal value or a `0x` hex value, or use the per-type slot combos to set each POI slot's state to Hidden, Undiscovered, Discovered or Completed. The raw values and slot states show the same data, so editing either updates the other.
+
+> ⚠️ **Note:** POI types are inferred from the save data and the game's space POI table, so some entries may show as Unidentified. The editor remembers the slot types it has learned for each system.
+>
+> If a system shows no POI data yet, travel to that system in game first - the game unpacks a system's POIs while you are there.
+
+| Space POIs |
+|-------|
+| <img src="../img/systems-pois.png"> |
+
+Use the GOTO buttons to open the station stats or packed POI data in the Raw JSON Editor.
+
 ---
 
-## Catalogue (Technologies, Products, Specials Words, Glyphs, Locations, Fishing & Recipes)
+## Catalogue
 
-The **Catalogue** tab manages your discovery progress and knowledge.
+The **Catalogue** tab manages your discovery progress and knowledge, with sub-tabs for Known Technologies, Known Products, Known Specials, Known Words, Known Glyphs, Teleport Locations, Fishing, Recipes, Wonders, Collected Knowledge, Fossils, Raw Materials and Discovery Stats.
+
+### Completion Tools
+
+The list pages show a completion counter such as `Known: 120 / 200 (60%)`. The Known Technologies, Products, Specials, Words, Glyphs, Fishing and Known Recipes pages all show a counter, and every one of them except Glyphs also has an <kbd>Add All Missing</kbd> button that adds every entry the database knows about but your save does not.
+
+The completion sub-tabs (Wonders, Collected Knowledge, Fossils, Raw Materials and Discovery Stats) each have a filterable grid, a completion counter, <kbd>Complete All</kbd> and <kbd>Clear All</kbd> buttons, and per-row progress editing where the game tracks a value.
+
+> 💡 **Note:** Names shown as `[?] Name` have no official localisation in the game files and are editor-curated approximations.
 
 ### Sections
 
@@ -607,7 +799,7 @@ Sorting and filtering with the headers and the filter search field.
 
 Use the <kbd>Add {type}</kbd> button to display a filterable list of items you can add to your known list.
 
-The <kbd>Remove Selected</kbd> removes a known entry. Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
+The <kbd>Remove Selected</kbd> removes a known entry. Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons. Words and glyphs instead use learn / unlearn buttons.
 
 #### Known Technologies
 View and manage the technologies that you can craft or use.
@@ -625,7 +817,7 @@ View and manage the products that you can craft or use.
 
 #### Known Specials
 View and manage the special items that you can craft or use.
-This list is syncronised with the Account Rewards panel to some degree.
+This list is synchronised with the Account Rewards panel to some degree.
 
 | Known Specials |
 |-------|
@@ -664,19 +856,57 @@ Use the <kbd>Travel to System</kbd> button to set the players coordinates to thi
 #### Fishing
 Browse the fish you have caught and some basic stats. Add fish to your catch list via the <kbd>Add Fish</kbd> button. Remove them via the <kbd>Remove Selected</kbd> button.
 
-Count and Largest Catch stats can be edited by changing their values.
+Count and Largest Catch stats can be edited by changing their values. Some fish are used as cooking ingredients, and those recipes live in the Recipes database.
 
 | Fishing |
 |-------|
 | <img src="../img/discoveries-fish.png"> |
 
 #### Recipes
-Browse a basic version of the complete recipe database. The **Recipes** sub-tab shows all crafting recipes with their ingredients, organised by type and offers filtering and sorting options.<br>
-Additional information for the recipe is offered at the bottom of the tab panel.
+The **Recipes** sub-tab has inner tabs:
+
+- **Known Recipes** - your learned recipes with a completion counter and <kbd>Add All Missing</kbd>, plus add, remove, export and import
+- **Recipe Info** - additional information for the selected recipe, shown at the bottom of the panel
+- **Recipes** - a basic version of the complete recipe database with ingredients, organised by type with filtering and sorting
 
 | Recipes |
 |-------|
 | <img src="../img/discoveries-recipes.png"> |
+
+#### Wonders
+Track the wonders you have discovered. Each row can be completed individually, or use <kbd>Complete All</kbd> / <kbd>Clear All</kbd> to change the whole list.
+
+| Wonders |
+|-------|
+| <img src="../img/catalogue-wonders.png"> |
+
+#### Collected Knowledge
+Track the knowledge entries you have collected. This grid supports per-row progress values, plus <kbd>Complete All</kbd> / <kbd>Clear All</kbd>.
+
+| Collected Knowledge |
+|-------|
+| <img src="../img/catalogue-collected-knowledge.png"> |
+
+#### Fossils
+Track the fossils you have seen. Fossils are stored in your account data (`accountdata.hg`), so this tab needs account data to be available for the selected platform.
+
+| Fossils |
+|-------|
+| <img src="../img/catalogue-fossils.png"> |
+
+#### Raw Materials
+Track the raw materials you have seen. Like Fossils, these are stored in your account data (`accountdata.hg`).
+
+| Raw Materials |
+|-------|
+| <img src="../img/catalogue-raw-materials.png"> |
+
+#### Discovery Stats
+View and edit the discovery statistics tracked for your save, with <kbd>Complete All</kbd> / <kbd>Clear All</kbd> for the whole grid.
+
+| Discovery Stats |
+|-------|
+| <img src="../img/catalogue-discovery-stats.png"> |
 
 ---
 
@@ -688,7 +918,7 @@ The **Milestones** tab lets you view and edit your journey milestones and game s
 |------------|-------------|
 | <img src="../img/milestones-main.png"> | <img src="../img/milestones-other.png"> |
 
-You can edit milestone progress values and global statistics tracked by the game.
+You can edit milestone progress values and global statistics tracked by the game. Each section has a GOTO button for the JSON data.
 
 ---
 
@@ -713,11 +943,14 @@ Export / Import via the <kbd>Export</kbd> and <kbd>Import</kbd> buttons.
 |-------|-------------|
 | **Name** | Selected settlement name |
 | **Seed** | Settlement seed (appearance, stats) |
+| **Class** | Settlement class |
 | **NPC Race** | Settlement NPC race |
 | **Decision Type** | Settlements current decision event type |
 | **Last Decision** | Settlements last decision event date |
-| **Stats** | Settlement population, happiness, productivity, upkeep, sentinel buildup, debt, alert buildup, bug attack buildup |
-| **Timers** | Timers for stats |
+| **Population** | Current settlement population |
+| **Max Population** | Maximum settlement population |
+| **Stats** | Happiness, productivity, upkeep, sentinel buildup, debt, alert buildup and bug attack buildup |
+| **Timers** | Last population, upkeep, debt, alert, bug attack and decision times |
 | **Mini Missions** | Mission seed and start time |
 | **Perks** | Active settlement bonuses (seed field for procedural perks) |
 
@@ -789,19 +1022,21 @@ ByteBeat is No Man's Sky's built-in music creation tool. With NMSE, you can expo
 | **Author Username** | Track author username |
 | **Author Online ID** | Track authors recorded online ID for the entry |
 | **Author Platform** | Authors online / play platform ID (ST, PS, etc.) |
-| **Data [ n ]** | Track data array |
+| **Data [ 1-8 ]** | Track data (8 channels) |
 | **[ ] Shuffle** | Shuffle playback |
 | **[ ] Autoplay On Foot** | Playback selected track on foot |
 | **[ ] Autoplay In Ship** | Playback selected track in ship |
 | **[ ] Autoplay In Vehicle** | Playback selected track in vehicle |
 
-Export / Import / Delete tracks via the <kbd>Export</kbd>, <kbd>Import</kbd>, and <kbd>Delete</kbd> buttons.
+Export / Import / Delete tracks via the <kbd>Export</kbd>, <kbd>Import</kbd>, and <kbd>Delete</kbd> buttons. Use the GOTO button to open the library in the Raw JSON Editor.
 
 ---
 
 ## Account Rewards
 
 The **Account** tab shows seasonal reward (expedition), Twitch drops and platform specific rewards data.
+
+NMSE auto-detects the account data file (`accountdata.hg`) from the selected save directory, and the status line at the top shows how many rewards were loaded.
 
 | Account Rewards | Platform Rewards |
 |------------|------------|
@@ -811,11 +1046,20 @@ The **Account** tab shows seasonal reward (expedition), Twitch drops and platfor
 
 | Field | Description |
 |-------|-------------|
-| **Season Rewards** | Expedition /season rewards |
+| **Season Rewards** | Expedition / season rewards |
 | **Twitch Rewards** | Twitch Drop rewards |
 | **Platform Rewards** | Platform-specific entitlements |
 
-Each tab has the ability to unlock / lock all, unlock individually and filter the lists.
+The reward grids show **Unlocked on Account** and **Redeemed in Save** columns. Each tab can unlock / lock all, unlock individually, filter the list, and use:
+
+- <kbd>Redeem All</kbd> / <kbd>Remove All</kbd> - mark every reward as redeemed (or remove the redeemed state) in the save
+- <kbd>Unlock All</kbd> / <kbd>Lock All</kbd> - change the unlocked state on the account
+
+The <kbd>Check Consistency</kbd> button compares your account and save reward arrays and reports entries where the states do not match, such as rewards redeemed but missing from the Known lists, or listed as known but not redeemed. This is an information tool for advanced users and does not indicate a problem.
+
+| Consistency Check |
+|-------|
+| <img src="../img/consistency-dialog.png"> |
 
 On macOS, NMSE loads account rewards, guide state and titles from
 `~/Library/Application Support/HelloGames/NMS/SETTINGS/GcUserSettingsData.mxml`
@@ -838,9 +1082,10 @@ The **Export Settings** tab lets you set up export naming conventions and file p
 |------------|------------|
 | <img src="../img/export-extensions.png"> | <img src="../img/export-templates.png"> |
 
-Configure how exported files are named and what format they use. This is useful if you frequently export and share save data or maintain custom collections of your save data.
+Configure how exported files are named and what format they use. The settings cover every exportable artifact, including inventories, ships, multi-tools, outfits, corvette snapshots, bases, discoveries, settlements and ByteBeats.
 
-Use the help sub tab for variable references.
+- <kbd>Save Settings</kbd> stores your changes, and <kbd>Reset to Defaults</kbd> restores the built-in naming templates and extensions
+- Use the Help sub-tab for the list of template variables such as `{name}`, `{seed}` and `{timestamp}`
 
 ---
 
@@ -856,7 +1101,7 @@ The **Raw JSON Editor** tab provides direct access to the underlying save file d
 
 The Raw JSON editor is for **advanced users** who need to edit values that aren't exposed in the other tabs. It shows the complete save file structure as a navigable tree view, text view, or a split view of both.
 
-It supports basic syntax highlighting, node export/import and change diffing.
+It supports basic syntax highlighting, undo/redo (`Ctrl+Z` / `Ctrl+Y`), node export/import and change diffing. The file selector on the toolbar switches between the **save file** and the **account data** file when account data is available.
 
 ### How to Use
 
@@ -865,21 +1110,43 @@ It supports basic syntax highlighting, node export/import and change diffing.
 3. Modify the value in the edit field
 4. Press Enter to confirm the change
 
+You can also right-click a node for Add Property / Add Array Item, Delete, Copy Key / Copy Value / Copy Path, Export Node and Import Node. Array and object entries can be reordered by dragging them.
+
 > ⚠️ **Caution:** Editing raw JSON values incorrectly can corrupt your save file. Only use this if you know what you're doing, and always keep a backup!
 
-Use the <kbd>Tree View</kbd>, <kbd>Text View</kbd> or <kbd>Split View</kbd> buttons to switch betweeen the different view modes.
+Use the <kbd>Tree View</kbd>, <kbd>Text View</kbd> or <kbd>Split View</kbd> buttons to switch between the different view modes. In split view, tick <kbd>Isolate Node</kbd> to edit just the selected node, and in the text views use <kbd>Format</kbd> and <kbd>Validate</kbd> to tidy or check the JSON.
+
+A breadcrumb row under the toolbar always shows where the selected node is in the document, so you can see the full path while editing text or in split view.
 
 Use the <kbd>Expand All</kbd> and <kbd>Collapse All</kbd> buttons to fold/unfold all.
 
-> 💡 **Tip:** The <kbd>Expand All</kbd> button will unfold up to half a million rows of keys and information depending on your saves age and density and can take a **very significant** amount of time to complete. It will warn you before you expand.
+> 💡 **Tip:** The <kbd>Expand All</kbd> button will unfold up to half a million rows of keys and information depending on your save's age and density, and can take a **very significant** amount of time to complete. It will warn you before you expand, and a <kbd>Stop</kbd> button appears while it runs.
 
 The <kbd>Show Changes</kbd> button can be used to show a basic diff (up to a maximum set of changes) for the save edits that have been made to the JSON objects.
 
 Use the <kbd>Search...</kbd> field to search by string, key, etc.
 
-You can also export/import per node object via the context menu by right-clicking the object/node.
+GOTO JSON buttons on other panels bring you straight here: NMSE syncs the other panels, opens the matching node and selects it in the tree.
 
 For advanced edits, it is recommended to export the whole save JSON (or relevant node) and make changes in a capable external editor such as Sublime, VS Code, etc.
+
+---
+
+## Database Search
+
+The **Database Search** tab is a read-only lookup tool for the whole item database loaded from the game data. It does not need a save file, so it stays available even when the editing tabs are locked.
+
+- Type in the **Search all items...** box to search by id, name, group, description, category and other fields (`Ctrl+F` focuses the box, `Escape` clears it)
+- Space-separated terms must all match; a term without wildcards is matched as a substring, while `*` matches any text and `?` matches a single character
+- Use the **Source** dropdown to limit results to one item type
+- The result list shows the item icon, name, category, ID and source, and a details pane shows every available field
+- The status line shows how many items are in the database, or how many match your search
+
+| Database Search |
+|-------|
+| <img src="../img/database-search.png"> |
+
+Useful when you want to check an item's ID or properties before adding it to an inventory or editing JSON.
 
 ---
 
@@ -898,10 +1165,64 @@ NMSE supports importing and exporting inventory data, making it easy to share lo
 2. Use the import function and select your file
 3. The items will be loaded into the inventory
 
+### Whole Save JSON
+
+Use <kbd>Tools > Export JSON</kbd> and <kbd>Tools > Import JSON</kbd> to back up or restore the loaded save as a readable JSON file. This covers everything in the save, including outfits, corvette snapshots, bases, discoveries, settlements and ByteBeats. Imported JSON is loaded into all panels so you can review it before saving.
+
 ### Compatibility
 
 NMSE can import inventories, multi-tools, ships, etc. from multiple save editor formats via key-matching, so you can share loadouts even if your friends use different tools.<br>
 Any keys that can be matched successfully will be imported.
+
+Supported formats include NMSE's own exports, NomNom wrapper exports and NMSSaveEditor formats, and obfuscated keys are de-obfuscated automatically during import.
+
+---
+
+## Language & Theme
+
+NMSE supports the **16 game languages**. To change the display language:
+
+1. Click **Language** in the menu bar
+2. Select your preferred language from the list
+
+The entire application - menus, labels, item names, and descriptions - will update to the selected language.
+
+### Supported Languages
+
+| Language | Code |
+|----------|------|
+| English (UK) | en-GB |
+| English (US) | en-US |
+| French | fr-FR |
+| Italian | it-IT |
+| German | de-DE |
+| Spanish | es-ES |
+| Spanish (Latin America) | es-419 |
+| Portuguese | pt-PT |
+| Portuguese (Brazil) | pt-BR |
+| Russian | ru-RU |
+| Polish | pl-PL |
+| Dutch | nl-NL |
+| Simplified Chinese | zh-CN |
+| Traditional Chinese | zh-TW |
+| Japanese | ja-JP |
+| Korean | ko-KR |
+
+### Theme
+
+Use the **Theme** menu to switch between **System**, **Light** and **Dark**. System follows your Windows theme automatically.
+
+---
+
+## Keeping NMSE Updated
+
+NMSE checks for updates automatically a couple of seconds after startup and prompts you when a newer version is available. You can also check manually at any time:
+
+1. Click <kbd>Help > Check for Updates...</kbd>
+2. If an update is available, review the release notes and choose whether to download and install it
+3. The update downloads in place, applies itself and relaunches NMSE
+
+> 💡 **Tip:** If NMSE is running from a cloud-synced folder such as OneDrive, the sync software may briefly lock the new executable after an update. If NMSE does not relaunch automatically, wait a moment and start it manually.
 
 ---
 
@@ -911,30 +1232,80 @@ Any keys that can be matched successfully will be imported.
 
 NMSE auto-detects save locations for Steam, GOG, and Xbox Game Pass. If auto-detect doesn't work, save files are typically located at:
 
-- **Steam:** `%APPDATA%\HelloGames\NMS\`
-- **GOG:** `%APPDATA%\HelloGames\NMS\`
-- **Xbox Game Pass:** Search for `NMS` in the Xbox app data folder
+- **Steam:** `%APPDATA%\HelloGames\NMS\st_<steamid>\`
+- **GOG:** `%APPDATA%\HelloGames\NMS\DefaultUser\`
+- **Xbox Game Pass:** `%LOCALAPPDATA%\Packages\HelloGames*\SystemAppData\wgs\<id>\` (the folder containing `containers.index`)
+
+### How do I load an Xbox Game Pass save?
+
+Open the folder that contains `containers.index` with <kbd>File > Open Save Directory</kbd>. NMSE reads the index and lists the save slots stored in the GUID-named blobs next to it.
 
 ### Can I edit PlayStation or Switch saves?
 
-Yes! You'll need to transfer the save file to your PC first via the homebrew of your choice (PS4: Apollo, SaveWizard, etc. - Switch: JKSV, etc.), edit it with NMSE, then transfer it back. Use **File -> Load Save File** to open manually transferred saves.
+Yes! You'll need to transfer the save file to your PC first via the homebrew of your choice (PS4: Apollo, SaveWizard, etc. - Switch: JKSV, etc.), edit it with NMSE, then transfer it back. Use <kbd>File > Load Save File</kbd> to open manually transferred saves.
+
+### How do I load a PS4 memory.dat, SaveWizard NOMANSKY file, or PS4 HTOS savedata*.hg save?
+
+- `memory.dat`: open it with <kbd>File > Load Save File</kbd>, then pick the game slot and its Auto or Manual save from the toolbar combos
+- SaveWizard `NOMANSKY` `.hg` files: open the file directly; NMSE writes it back in the same format
+- PS4 HTOS/homebrew saves: open the folder containing the `savedataNN.hg` and `manifestNN.hg` files; game slots start at `savedata02.hg`
+
+### How do I load a Switch save? What files must I copy?
+
+Copy the `savedataNN.hg` data files together with their matching `manifestNN.hg` companion files, then open the folder with NMSE. Game data starts at `savedata02.hg`; `savedata00.hg` is the settings file.
 
 ### Will editing my save get me banned?
 
 No Man's Sky does not have an anti-cheat system for save file editing. However, always use save editing responsibly and keep backups.<br>
 We do not support or condone cheating or editing at the expense of others. Please be responsible!
 
+### Why are the editing tabs greyed out before I load a save?
+
+Every editing tab is locked until a save is loaded and shows a no-save overlay while locked. **Export Settings** and **Database Search** stay usable because they do not need a save. Load a save with <kbd>File > Open Save Directory</kbd> or <kbd>File > Load Save File</kbd> to unlock the rest.
+
 ### My save won't load - what do I do?
 
 1. Make sure you're using the [latest version of NMSE][releases]
 2. Check that your save is from a supported game version
-3. Try restoring from a backup (<kbd>Edit > Restore Backup</kbd>)
+3. Try restoring from a backup (<kbd>Edit > Restore Backup (All)</kbd> or <kbd>Edit > Restore Backup (Single)</kbd>) and pick a backup in the Backup Picker
 4. Ensure you haven't caused the issue externally with other tools or edits first
 5. If the issue persists, [report a bug][issues-bug] - ensuring that you give clear and thorough information
 
 ### Can I undo my changes?
 
-You can restore from the automatic backup that NMSE creates when you save. Use <kbd>Edit > Restore Backup</kbd> to go back to the last version before your edits.
+You can restore any of the last 10 automatic ZIP backups that NMSE creates when you save. Use <kbd>Edit > Restore Backup (All)</kbd> or <kbd>Edit > Restore Backup (Single)</kbd> and pick the backup you want.
+
+### Where are my backups stored, and how many are kept?
+
+NMSE keeps the 10 most recent backups for each save folder as timestamped ZIP files. They are written to the folder chosen in the **Backup:** toolbar combo, or to a `Save Backups` folder next to `NMSE.exe` or in TEMP if no folder is configured. See [Backups & Restoring][backups].
+
+### How do I choose which backup to restore?
+
+Use <kbd>Edit > Restore Backup (All)</kbd> or <kbd>Edit > Restore Backup (Single)</kbd>. Both open the **Backup Picker**, where you choose from the available backups (listed newest first with their created time, size and location). All restores every file in the backup, while Single restores only the currently loaded save file.
+
+### How do I update NMSE?
+
+NMSE checks for updates automatically on startup. You can check manually with <kbd>Help > Check for Updates...</kbd>; when an update is available you can download and install it in place, and the app relaunches itself. See [Keeping NMSE Updated][keeping-updated].
+
+### Why are some item names shown as "[?] Name"?
+
+Those names have no official localisation in the game files. NMSE shows an editor-curated approximation prefixed with `[?]` so you know the name is not from the game itself.
+
+### Why are my account rewards not visible in game?
+
+The Account Rewards tab edits the account data file (`accountdata.hg`), which NMSE auto-detects from the selected save directory. For Twitch drops and platform rewards you need to launch the game offline for the rewards to be picked up, and you may also need to edit the platform rewards after launch (or lock the user settings MXML file until after launch) because the game recreates it at runtime. Platform rewards may also need the `GCUSERSETTINGSDATA.MXML` file edited directly.
+
+### What does Multiplayer edit, and why does it need a confirmation checkbox?
+
+The Multiplayer sub-tab edits Swarm co-op keys under `CommonStateData.SeasonData`, such as the cached community team, team ship seeds and palettes, purchase and transfer restrictions, and start-up player setup. The feature is experimental and some values are enforced by the game, so it is gated behind a confirmation checkbox, and you should back up your save before using it.
+
+### Does Database Search need a loaded save?
+
+No. Database Search is a read-only lookup over the game's item database and works without a save loaded, alongside Export Settings.
+
+### Why do my corvette technology slots look wrong?
+
+NMS only stores the technology slots for your last recently boarded corvette, and corvette data is jumbled in the save. Summon the corvette, set another starship as primary before editing, and keep the corvette as your second last summoned ship - see the Corvette Support notes in [Starships][starships].
 
 ---
 
@@ -952,6 +1323,7 @@ Made with ❤️ by [**vectorcmdr**][github-owner]
 [getting-started]: #getting-started
 [opening-save]: #opening-a-save-file
 [saving-changes]: #saving-your-changes
+[backups]: #backups--restoring
 [tabs-overview]: #tabs-overview
 [player-stats]: #player-stats
 [exosuit]: #exosuit
@@ -961,15 +1333,17 @@ Made with ❤️ by [**vectorcmdr**][github-owner]
 [exocraft]: #exocraft-vehicles
 [companions]: #companions-pets
 [bases]: #bases--storage
-[catalogue]: #catalogue-technologies-products-words-glyphs-locations-fishing--recipes
+[catalogue]: #catalogue
 [milestones]: #milestones
 [settlements]: #settlements
 [bytebeat]: #bytebeats
 [account]: #account-rewards
 [export-config]: #export-settings
 [raw-json]: #raw-json-editor
+[database-search]: #database-search
 [import-export]: #importing--exporting-inventories
-[language]: #changing-language
+[language]: #language--theme
+[keeping-updated]: #keeping-nmse-updated
 [faq]: #frequently-asked-questions
 
 <!-- Other Guides -->
@@ -977,7 +1351,6 @@ Made with ❤️ by [**vectorcmdr**][github-owner]
 [guide-bottles]: ../dev/bottles-linux-guide.md
 [guide-gcenx-wine]: ../dev/gcenx-macos-guide.md
 [guide-crossover]: ../dev/crossover-macos-guide.md
-[cross-platform-plan]: ../dev/cross-platform-workplan.md
 
 <!-- External Links -->
 [releases]: https://github.com/vectorcmdr/NMSE/releases/latest

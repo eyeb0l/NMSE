@@ -43,6 +43,12 @@ internal sealed class JsonAddAction(object parent, string key, object? value) : 
     }
 }
 
+internal sealed class JsonMemberAction(JsonObject parent, string oldKey, string newKey, object? oldValue, object? newValue) : IJsonUndoAction
+{
+    public void Undo() { parent.Rename(newKey, oldKey); parent.Set(oldKey, oldValue); }
+    public void Redo() { parent.Rename(oldKey, newKey); parent.Set(newKey, newValue); }
+}
+
 internal sealed class JsonDeleteAction(object parent, string key, object? value) : IJsonUndoAction
 {
     public void Undo()

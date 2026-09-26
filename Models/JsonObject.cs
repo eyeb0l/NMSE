@@ -257,6 +257,59 @@ public partial class JsonObject
     }
 
     /// <summary>
+    /// Renames an existing property in place, preserving its position and value.
+    /// </summary>
+    /// <param name="oldName">The current property name.</param>
+    /// <param name="newName">The new property name.</param>
+    /// <returns><c>true</c> if renamed; <c>false</c> if the old name is missing or the new name already exists.</returns>
+    public bool Rename(string oldName, string newName)
+    {
+        if (string.IsNullOrEmpty(newName)) return false;
+        if (string.Equals(oldName, newName, StringComparison.Ordinal)) return true;
+
+        int index = IndexOfName(oldName);
+        if (index < 0) return false;
+
+        int existing = IndexOfName(newName);
+        if (existing >= 0) return false;
+
+        _names[index] = newName;
+        if (_index != null)
+        {
+            _index.Remove(oldName);
+            _index[newName] = index;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Removes all properties from this object.
+    /// </summary>
+    public void Clear()
+    {
+        for (int i = 0; i < Length; i++)
+            ClearParent(_values[i]);
+        Array.Clear(_names, 0, Length);
+        Array.Clear(_values, 0, Length);
+        Length = 0;
+        _index = null;
+    }
+
+    /// <summary>
+    /// Finds the positional index of a property by name.
+    /// </summary>
+    /// <param name="name">The property name to look up.</param>
+    /// <returns>The zero-based index, or -1 when not found.</returns>
+    private int IndexOfName(string name)
+    {
+        if (_index != null)
+            return _index.TryGetValue(name, out int idx) ? idx : -1;
+        for (int i = 0; i < Length; i++)
+            if (_names[i] == name) return i;
+        return -1;
+    }
+
+    /// <summary>
     /// Moves the property at <paramref name="fromIndex"/> to <paramref name="toIndex"/>,
     /// shifting other properties accordingly. Used for drag-drop reordering in the JSON editor.
     /// </summary>

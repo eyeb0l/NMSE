@@ -105,7 +105,7 @@ internal static class ExocraftLogic
             : normalised;
 
         // 14-hex-digit UniverseAddress format includes a 2-digit RealityIndex
-        // between SolarSystemIndex and VoxelY — strip it to get the 12-digit portal code.
+        // between SolarSystemIndex and VoxelY - strip it to get the 12-digit portal code.
         if (portalCode.Length == 14)
             portalCode = string.Concat(portalCode.AsSpan(0, 4), portalCode.AsSpan(6, 8));
 

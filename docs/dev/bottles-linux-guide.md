@@ -2,7 +2,7 @@
 
 A step-by-step guide to running NMSE (No Man's Save Editor) on Linux using [Bottles](https://usebottles.com), a modern graphical Wine manager.
 
-> **Note:** This is an interim solution. A native cross-platform version using Eto.Forms is planned - see the [Cross-Platform Work Plan](cross-platform-workplan.md) for details.
+> **Note:** NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review.
 
 ---
 
@@ -216,6 +216,6 @@ For most Linux users, the **AppImage** is the simplest option. **Bottles** is re
 
 ---
 
-## Future: Native Linux Support
+## Native Port
 
-See the [Cross-Platform Work Plan](cross-platform-workplan.md) for the full migration roadmap to a native Eto.Forms Linux application.
+Options for a native Linux build are under review; there is no current plan.

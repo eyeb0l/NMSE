@@ -38,7 +38,7 @@ public static class LocalisationBuilder
 
         foreach (var (nmsName, tag) in ExtractorConfig.SupportedLanguages)
         {
-            var langMxmlFiles = ExtractorConfig.GetLocaleMxmlFiles(nmsName);
+            var langMxmlFiles = ExtractorConfig.GetLocaleMxmlFiles(mbinDir, nmsName);
             var translations = new Dictionary<string, string>();
 
             foreach (string mxmlFile in langMxmlFiles)
