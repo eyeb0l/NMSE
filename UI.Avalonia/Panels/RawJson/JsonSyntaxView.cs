@@ -49,11 +49,12 @@ public sealed class JsonSyntaxView : ScrollViewer
         _highlightCancellation?.Cancel();
         _highlightCancellation?.Dispose();
         var cancellation = _highlightCancellation = new CancellationTokenSource();
+        CancellationToken token = cancellation.Token;
         Dispatcher.UIThread.Post(async () =>
         {
             try
             {
-                await Task.Delay(120, cancellation.Token);
+                await Task.Delay(120, token);
                 Highlight(text ?? string.Empty);
             }
             catch (OperationCanceledException)

@@ -217,7 +217,7 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
         if (!await ConfirmOperationAsync(UiStrings.Get("starship.delete_title"), UiStrings.Get("starship.delete_confirm"))) return false;
         int removed = _selectedShipIndex; JsonObject ship = _ships.GetObject(removed);
         if (IsCorvette(ship)) StarshipLogic.InvalidateCorvetteBase(_playerState.GetArray("PersistentPlayerBases"), removed);
-        StarshipLogic.DeleteShipData(ship); StarshipLogic.ResetShipCustomisation(_playerState.GetArray("CharacterCustomisationData"), removed);
+        StarshipLogic.DeleteShipData(ship); StarshipLogic.SetShipUsesLegacyColours(_playerState, removed, false); StarshipLogic.ResetShipCustomisation(_playerState.GetArray("CharacterCustomisationData"), removed);
         if (_primaryShipIndex == removed) _primaryShipIndex = Math.Max(0, StarshipLogic.FindFirstValidShipIndex(_ships));
         RawNumberGuard.SetInt(_playerState, "PrimaryShip", _primaryShipIndex); RefreshShipList(_primaryShipIndex); RaiseModified(); return true;
     }
@@ -275,7 +275,7 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
         if (entries.Count == 0 || empty < 0) return false;
         if (listIndex < 0) listIndex = await SelectArchiveAsync(entries.Select(value => value.DisplayName).ToArray(), UiStrings.Get("starship.archive_import_title"));
         if (listIndex < 0 || listIndex >= entries.Count || !await ConfirmOperationAsync(UiStrings.Get("starship.archive_import_title"), UiStrings.Get("starship.archive_import_confirm"))) return false;
-        StarshipLogic.ArchivedShipListItem selected = entries[listIndex]; StarshipLogic.ImportShipFromArchive(archive.GetObject(selected.ArchiveIndex), _ships.GetObject(empty), empty, _playerState.GetArray("CharacterCustomisationData"));
+        StarshipLogic.ArchivedShipListItem selected = entries[listIndex]; StarshipLogic.ImportShipFromArchive(archive.GetObject(selected.ArchiveIndex), _ships.GetObject(empty), empty, _playerState.GetArray("CharacterCustomisationData"), _playerState);
         RefreshShipList(empty); RaiseModified(); return true;
     }
 
@@ -284,7 +284,7 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
         if (_ships is null || _playerState is null || _selectedShipIndex < 0) return false;
         CommitSelected(_playerState); JsonObject ship = _ships.GetObject(_selectedShipIndex); bool corvette = IsCorvette(ship);
         if (corvette && !CheckCorvetteSafety()) return false;
-        JsonObject export = new(); export.Set("Ship", ship.DeepClone());
+        JsonObject export = new(); export.Set("Ship", ship.DeepClone()); export.Set("UsesLegacyColours", StarshipLogic.GetShipUsesLegacyColours(_playerState, _selectedShipIndex));
         if (corvette)
         {
             int baseIndex = StarshipLogic.FindCorvetteBaseIndex(_playerState.GetArray("PersistentPlayerBases"), _selectedShipIndex); if (baseIndex < 0) return false;
@@ -309,7 +309,8 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
         bool overwrite = empty < 0; if (overwrite && IsCorvette(payload.Ship) && targetIndex == _primaryShipIndex) return false; if (overwrite && !await ConfirmOperationAsync(UiStrings.Get("starship.import_overwrite_title"), UiStrings.Get("starship.import_overwrite_confirm"))) return false;
         JsonObject target = _ships.GetObject(targetIndex); if (overwrite && IsCorvette(target)) StarshipLogic.InvalidateCorvetteBase(_playerState.GetArray("PersistentPlayerBases"), targetIndex);
         JsonObject imported = payload.Ship.DeepClone(); JsonObject? legacyCcd = imported.GetObject("__ShipCustomisation");
-        foreach (string key in imported.Names()) if (key != "__ShipCustomisation") target.Set(key, imported.Get(key)); target.Remove("__ShipCustomisation");
+        foreach (string key in imported.Names()) if (key is not "__ShipCustomisation" and not "UsesLegacyColours") target.Set(key, imported.Get(key)); target.Remove("__ShipCustomisation"); target.Remove("UsesLegacyColours");
+        if (payload.UsesLegacyColours is { } legacyColours) StarshipLogic.SetShipUsesLegacyColours(_playerState, targetIndex, legacyColours);
         JsonObject? ccd = payload.Customisation is not null && !StarshipLogic.IsCcdDefault(payload.Customisation) ? payload.Customisation : legacyCcd;
         StarshipLogic.SetShipCustomisation(_playerState.GetArray("CharacterCustomisationData"), targetIndex, ccd?.DeepClone());
         if (payload.Base is not null && IsCorvette(target)) ImportCorvetteBase(payload.Base, targetIndex);
@@ -320,7 +321,8 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
     {
         if (_ships is null || _playerState is null || _selectedShipIndex < 0 || !IsCorvette(_ships.GetObject(_selectedShipIndex)) || !CheckCorvetteSafety()) return false;
         CommitSelected(_playerState); JsonObject source = _ships.GetObject(_selectedShipIndex); JsonObject snapshot = new(); foreach (string key in source.Names()) if (key != "Inventory") snapshot.Set(key, source.Get(key) switch { JsonObject v => v.DeepClone(), JsonArray v => v.DeepClone(), object v => v, _ => null });
-        JsonObject wrapper = new(); wrapper.Set("Ship", snapshot); int baseIndex = StarshipLogic.FindCorvetteBaseIndex(_playerState.GetArray("PersistentPlayerBases"), _selectedShipIndex); if (baseIndex >= 0) wrapper.Set("Base", _playerState.GetArray("PersistentPlayerBases")!.GetObject(baseIndex).DeepClone());
+        JsonObject wrapper = new(); wrapper.Set("Ship", snapshot); wrapper.Set("UsesLegacyColours", StarshipLogic.GetShipUsesLegacyColours(_playerState, _selectedShipIndex));
+        if (StarshipLogic.GetShipCustomisation(_playerState.GetArray("CharacterCustomisationData"), _selectedShipIndex) is { } snapshotCcd) wrapper.Set("CharacterCustomisationData", snapshotCcd.DeepClone()); int baseIndex = StarshipLogic.FindCorvetteBaseIndex(_playerState.GetArray("PersistentPlayerBases"), _selectedShipIndex); if (baseIndex >= 0) wrapper.Set("Base", _playerState.GetArray("PersistentPlayerBases")!.GetObject(baseIndex).DeepClone());
         string suggested = BuildExportFileName(true, snapshot: true); if (ExportShipAsync is not null) await ExportShipAsync(wrapper, suggested); else if (_desktopServices is not null) { string ext = ExportConfig.Instance.CorvetteSnapshotExt.TrimStart('.'); string? path = await _desktopServices.PickSaveFileAsync(UiStrings.Get("starship.export_snapshot"), suggested, ext, new DesktopFileType("Corvette snapshot", $"*.{ext}")); if (path is null) return false; wrapper.ExportToFile(path); } else return false; return true;
     }
 
@@ -328,7 +330,9 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
     {
         if (_ships is null || _selectedShipIndex < 0 || !IsCorvette(_ships.GetObject(_selectedShipIndex)) || !CheckCorvetteSafety()) return false;
         StarshipImportPayload? payload = ImportShipDataAsync is not null ? await ImportShipDataAsync([$"*{ExportConfig.Instance.CorvetteSnapshotExt}"]) : await PickAndReadSnapshotAsync(); if (payload is null) return false;
-        JsonObject target = _ships.GetObject(_selectedShipIndex); JsonObject cargo = target.GetObject("Inventory")!; foreach (string key in payload.Ship.Names()) if (key != "Inventory") target.Set(key, payload.Ship.Get(key) switch { JsonObject v => v.DeepClone(), JsonArray v => v.DeepClone(), object v => v, _ => null }); target.Set("Inventory", cargo);
+        JsonObject target = _ships.GetObject(_selectedShipIndex); JsonObject cargo = target.GetObject("Inventory")!; foreach (string key in payload.Ship.Names()) if (key is not "Inventory" and not "UsesLegacyColours") target.Set(key, payload.Ship.Get(key) switch { JsonObject v => v.DeepClone(), JsonArray v => v.DeepClone(), object v => v, _ => null }); target.Set("Inventory", cargo); target.Remove("UsesLegacyColours");
+        if (payload.UsesLegacyColours is { } snapshotLegacy) StarshipLogic.SetShipUsesLegacyColours(_playerState, _selectedShipIndex, snapshotLegacy);
+        if (payload.Customisation is { } snapshotCustomisation) StarshipLogic.SetShipCustomisation(_playerState?.GetArray("CharacterCustomisationData"), _selectedShipIndex, snapshotCustomisation.DeepClone());
         if (payload.Base is not null) ImportCorvetteBase(payload.Base, _selectedShipIndex); RefreshShipList(_selectedShipIndex); RaiseModified(); return true;
     }
 
@@ -409,7 +413,7 @@ public sealed partial class StarshipPanel : UserControl, ISaveEditorPanel, IGoTo
     private string BuildExportFileName(bool corvette, bool snapshot) { string type = (_type.SelectedItem as StarshipLogic.ShipTypeItem)?.InternalName ?? string.Empty; string cls = _class.SelectedIndex is >= 0 and < 4 ? StarshipLogic.ShipClasses[_class.SelectedIndex] : "C"; ExportConfig cfg = ExportConfig.Instance; string template = snapshot ? cfg.CorvetteSnapshotTemplate : corvette ? cfg.CorvetteTemplate : cfg.StarshipTemplate; string ext = snapshot ? cfg.CorvetteSnapshotExt : corvette ? cfg.CorvetteExt : cfg.StarshipExt; return ExportConfig.BuildFileName(template, ext, new Dictionary<string, string> { ["ship_name"] = _name.Text ?? string.Empty, ["type"] = type, ["class"] = cls }); }
     private async Task<StarshipImportPayload?> PickAndReadShipAsync() { if (_desktopServices is null) return null; IReadOnlyList<string> paths = await _desktopServices.PickFilesAsync(UiStrings.Get("starship.import"), false, new DesktopFileType("Starship", $"*{ExportConfig.Instance.StarshipExt}", $"*{ExportConfig.Instance.CorvetteExt}", "*.nmsship")); return paths.Count == 0 ? null : ReadShipPayload(paths[0]); }
     private async Task<StarshipImportPayload?> PickAndReadSnapshotAsync() { if (_desktopServices is null) return null; IReadOnlyList<string> paths = await _desktopServices.PickFilesAsync(UiStrings.Get("starship.import_snapshot"), false, new DesktopFileType("Corvette snapshot", $"*{ExportConfig.Instance.CorvetteSnapshotExt}")); return paths.Count == 0 ? null : ReadShipPayload(paths[0]); }
-    private static StarshipImportPayload? ReadShipPayload(string path) { var zip = StarshipLogic.TryReadNmsshipZip(path); if (zip is not null) { JsonObject? baseData = zip.Value.objects is null ? null : new JsonObject(); baseData?.Set("Objects", zip.Value.objects); return new StarshipImportPayload(zip.Value.ship, baseData, zip.Value.ccd); } JsonObject root = JsonObject.ImportFromFile(path); JsonObject? ship = root.GetObject("Ship"); if (ship is not null) return new StarshipImportPayload(ship, root.GetObject("Base"), root.GetObject("CharacterCustomisationData")); if (InventoryImportHelper.IsNomNomWrapper(root)) ship = root.GetObject("Data")?.GetObject("Starship") ?? root.GetObject("Data")?.GetObject("Ship"); return new StarshipImportPayload(ship ?? root); }
+    private static StarshipImportPayload? ReadShipPayload(string path) { var zip = StarshipLogic.TryReadNmsshipZip(path); if (zip is not null) { JsonObject? baseData = zip.Value.objects is null ? null : new JsonObject(); baseData?.Set("Objects", zip.Value.objects); return new StarshipImportPayload(zip.Value.ship, baseData, zip.Value.ccd); } JsonObject root = JsonObject.ImportFromFile(path); JsonObject? ship = root.GetObject("Ship"); if (ship is not null) return new StarshipImportPayload(ship, root.GetObject("Base"), root.GetObject("CharacterCustomisationData"), StarshipLogic.TryGetExportedLegacyColours(root)); if (InventoryImportHelper.IsNomNomWrapper(root)) ship = root.GetObject("Data")?.GetObject("Starship") ?? root.GetObject("Data")?.GetObject("Ship"); return new StarshipImportPayload(ship ?? root, UsesLegacyColours: StarshipLogic.TryGetExportedLegacyColours(root)); }
     private async Task ExportInventoryAsync(JsonObject inventory, string name) { if (_desktopServices is null) return; string ext = Path.GetExtension(name).TrimStart('.'); string? path = await _desktopServices.PickSaveFileAsync(UiStrings.Get("common.export"), name, ext, new DesktopFileType("Starship inventory", $"*.{ext}")); if (path is not null) await File.WriteAllTextAsync(path, JsonParser.Serialize(inventory, true, skipReverseMapping: true)); }
     private async Task<JsonObject?> ImportInventoryAsync(string ext) { if (_desktopServices is null) return null; IReadOnlyList<string> paths = await _desktopServices.PickFilesAsync(UiStrings.Get("common.import"), false, new DesktopFileType("Starship inventory", $"*.{ext}")); return paths.Count == 0 ? null : JsonObject.ImportFromFile(paths[0]); }
     private async Task<bool> ConfirmOperationAsync(string title, string message) => ConfirmAsync is not null ? await ConfirmAsync(title, message) : _desktopServices is not null && await _desktopServices.ConfirmAsync(title, message);

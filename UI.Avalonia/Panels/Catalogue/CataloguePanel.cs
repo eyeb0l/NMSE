@@ -218,6 +218,11 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _locationCore.Text = string.Empty;
     }
 
+    public void SetLocalisationService(LocalisationService service)
+    {
+        foreach (var panel in _completionPanels) panel.Localisation = service;
+    }
+
     public void ApplyUiLocalisation()
     {
         for (int i = 0; i < _completionTabs.Length; i++)
@@ -399,6 +404,8 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         var footer = CatalogueUi.Toolbar(
             RegisterButton("Fish.add", CatalogueUi.AsyncButton(string.Empty, AddFishAsync)),
             RegisterButton("Fish.remove", CatalogueUi.Button(string.Empty, RemoveFish)),
+            CatalogueUi.AsyncButton("Complete fish catalogue", () => CompleteFishAsync(true)),
+            CatalogueUi.AsyncButton("Repair fishing records", () => CompleteFishAsync(false)),
             RegisterButton("Fish.export", CatalogueUi.AsyncButton(string.Empty, () => ExportListAsync(CatalogueTransferKind.Fish))),
             RegisterButton("Fish.import", CatalogueUi.AsyncButton(string.Empty, () => ImportListAsync(CatalogueTransferKind.Fish))));
         return (grid, filter, CatalogueUi.PageGrid(top, grid, footer));

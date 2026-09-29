@@ -57,6 +57,7 @@ public sealed class AvaloniaResourceCatalog : IDisposable
             progress?.Report(new ResourceLoadProgress(45, "Loading words and localisation…"));
             Words.LoadFromFile(Path.Combine(json, "Words.json"));
             Localisation.SetLangDirectory(Path.Combine(json, "lang"));
+            ProcTechLogic.SetLanguageDirectory(Path.Combine(json, "lang"));
             UiStrings.SetDirectory(Path.Combine(resources, "ui", "lang"));
 
             string mappingPath = Path.Combine(resources, "map", "mapping.json");

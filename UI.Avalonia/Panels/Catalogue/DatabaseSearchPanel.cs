@@ -25,7 +25,7 @@ public sealed class DatabaseSearchPanel : UserControl
         _source.SelectedIndex = 0;
         _query.TextChanged += (_, _) => Refresh();
         _source.SelectionChanged += (_, _) => Refresh();
-        _grid.SelectionChanged += (_, _) => _details.Text = (_grid.SelectedItem as GameItem)?.Description ?? string.Empty;
+        _grid.SelectionChanged += (_, _) => _details.Text = ControlTokens.Resolve((_grid.SelectedItem as GameItem)?.Description);
         var toolbar = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), ColumnSpacing = 8 };
         toolbar.Children.Add(_query); toolbar.Children.Add(_source); Grid.SetColumn(_source, 1);
         var root = new Grid { Margin = new Thickness(10), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };

@@ -233,9 +233,8 @@ class consumes.
   read-only fallback to the legacy `Localisation-EN.json.tbc` for older resource sets.
   `ClearLocalisationCache` resets it.
 - `Translate` resolves a localisation key, retries without a redundant `_NAME` segment,
-  applies `MissingLocalisationOverrides`, converts `FE_*` control tokens to readable
-  labels (`FE_ALT1` to `[E]`, `FE_SELECT` to `[LMB]`), strips markup tags and title-cases
-  `_NAME` values.
+  applies `MissingLocalisationOverrides`, strips markup tags (leaving control tokens such as
+  `FE_ALT1` in place for the app to resolve at display time) and title-cases `_NAME` values.
 - Helpers: `GetPropertyValue`, `GetNestedEnum`, `ParseValue`, `ParseColour`,
   `NormalizeGameIconPath`, `TitleCaseName`, `FormatStatTypeName`,
   `LooksLikeLocalisationKey` and `UnresolvedLocalisationKeyCount`.
@@ -528,9 +527,17 @@ notation uses a lowercase `e`. `none.json` is written with two-space indenting v
 | File | `NMSE.Extractor/Data/ImageExtractor.cs` |
 | Purpose | Convert DDS textures to PNG icons using ImageMagick |
 
-NMS stores item icons as `.dds` (DirectDraw Surface) textures. This class invokes
-ImageMagick to convert them to `.png` files in `Resources/icons/`. The resulting PNGs are
-loaded by `AvaloniaIconProvider` at runtime.
+NMS stores item icons as `.dds` (DirectDraw Surface) textures. `CollectIdIconPairs` reads
+the `Id` and `IconPath` fields from 16 JSON files (Buildings, Constructed Technology, Food,
+Corvette, Curiosities, Exocraft, Fish, Others, Products, Raw Materials, Starships,
+Technology, Technology Module, Trade, Upgrades and none). `NormalizeExtracted` moves the
+extracted texture tree to lowercase `textures/` so paths match the game references.
+`ExtractIcons` looks up each icon in `banks/extracted/` and invokes `magick.exe` (15 second
+timeout) to write `{sanitisedId}.png` files into `Resources/images/`. Icons are emitted as
+128 px thumbnails (`-thumbnail 128x128>`), matching the editor's icon cache size, which keeps
+the asset set small and the runtime preload fast. The macOS app loads these assets through `AvaloniaIconProvider`. `FindMagickExe`
+locates the portable ImageMagick under `tools/imagemagick/` (or directly in `tools/`), and
+`SanitizeFilename` replaces characters that are invalid in file names.
 
 ---
 

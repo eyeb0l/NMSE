@@ -162,7 +162,7 @@ public sealed partial class CataloguePanel
         JsonArray? largest = _fishingRecord?.GetArray("LargestCatchList");
         if (products != null)
         {
-            for (int i = 0; i < products.Length; i++)
+            for (int i = 0; i < Math.Min(products.Length, 256); i++)
             {
                 string productId;
                 try { productId = products.GetString(i) ?? string.Empty; } catch { continue; }
@@ -216,13 +216,25 @@ public sealed partial class CataloguePanel
             _visibleFishRows.Add(row);
     }
 
+    private async Task CompleteFishAsync(bool complete)
+    {
+        if (_playerState is null) return;
+        if (ConfirmAsync is not null && !await ConfirmAsync("Fishing catalogue", complete
+            ? "Record every fish species and align the fishing record lists?"
+            : "Repair the fishing record lists while preserving existing catches?", default)) return;
+        SaveFish(_playerState);
+        var catalogue = new CatalogueDatabase(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+        CatalogueCompletionLogic.AddMissingFish(_playerState, complete ? catalogue.Fishing : []);
+        LoadFish(_playerState); RaiseModified();
+    }
+
     private async Task AddFishAsync()
     {
         if (_fishingRecord == null || Owner is not { } owner) return;
         JsonArray? products = _fishingRecord.GetArray("ProductList");
         if (products == null) return;
         int empty = -1;
-        for (int i = 0; i < products.Length; i++)
+        for (int i = 0; i < Math.Min(products.Length, 256); i++)
         {
             try { string value = products.GetString(i) ?? string.Empty; if (value.Length == 0 || value == "^") { empty = i; break; } }
             catch { empty = i; break; }
@@ -243,12 +255,12 @@ public sealed partial class CataloguePanel
         string[]? selected = await new CataloguePickerDialog(UiStrings.Get("discovery.add_fish_title"), candidates).ShowDialog<string[]>(owner);
         string? id = selected?.FirstOrDefault();
         if (string.IsNullOrEmpty(id)) return;
-        products.Set(empty, CatalogueLogic.EnsureCaretPrefix(id));
-        JsonArray? counts = _fishingRecord.GetArray("ProductCountList");
-        JsonArray? largest = _fishingRecord.GetArray("LargestCatchList");
-        if (counts != null && empty < counts.Length) counts.Set(empty, 0);
-        if (largest != null && empty < largest.Length) largest.Set(empty, 0.0);
-        if (_playerState != null) LoadFish(_playerState);
+        if (_playerState is null) return;
+        SaveFish(_playerState);
+        var catalogue = new CatalogueDatabase(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+        CatalogueCompletionLogic.AddMissingFish(_playerState, catalogue.Fishing.Where(fish =>
+            CatalogueLogic.StripCaretPrefix(fish.Id).Equals(CatalogueLogic.StripCaretPrefix(id), StringComparison.OrdinalIgnoreCase)).ToArray());
+        LoadFish(_playerState);
         RaiseModified();
     }
 

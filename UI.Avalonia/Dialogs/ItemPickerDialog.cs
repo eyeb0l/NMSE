@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
@@ -8,6 +9,8 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using NMSE.Data;
+using NMSE.Core;
+using NMSE.Core.Utilities;
 using NMSE.UI.Avalonia.Services;
 
 namespace NMSE.UI.Avalonia.Dialogs;
@@ -22,12 +25,21 @@ public sealed class ItemPickerDialog : Window
     private readonly DataGrid _itemGrid;
     private readonly Button _acceptButton;
     private readonly TextBox _manualIdBox;
+    private GameItemDatabase? _database;
+    private readonly Dictionary<string, uint> _selectedSeeds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly NumericUpDown _technologySeed = new() { Minimum = 0, Maximum = 99999, FormatString = "00000", Width = 100 };
+    private readonly Button _bestSeed = new() { Content = "Best roll" };
+    private readonly Button _searchSeed = new() { Content = "Choose Stats…" };
+    private readonly StackPanel _technologyTools = new() { Orientation = Orientation.Horizontal, Spacing = 8 };
+    private readonly TextBlock _technologyPreview = new() { TextWrapping = TextWrapping.Wrap, MaxHeight = 100 };
+    private bool _refreshingSeed;
+    public LocalisationService? Localisation { get; set; }
 
     public ItemPickerDialog(string? title = null)
     {
         Title = title ?? UiStrings.Get("inventory.item_picker");
         Width = 760;
-        Height = 540;
+        Height = 640;
         MinWidth = 560;
         MinHeight = 400;
         CanResize = true;
@@ -115,7 +127,26 @@ public sealed class ItemPickerDialog : Window
             Foreground = Brushes.IndianRed,
             TextWrapping = TextWrapping.Wrap,
         };
-        var manualArea = new StackPanel { Spacing = 5, Children = { manualRow, warning } };
+        var generateSeed = new Button { Content = "Generate" };
+        _technologyTools.Children.Add(new TextBlock { Text = "Technology seed:", VerticalAlignment = VerticalAlignment.Center });
+        _technologyTools.Children.Add(_technologySeed); _technologyTools.Children.Add(generateSeed);
+        _technologyTools.Children.Add(_bestSeed); _technologyTools.Children.Add(_searchSeed);
+        _technologyTools.IsVisible = false;
+        generateSeed.Click += (_, _) => _technologySeed.Value = uint.Parse(ProceduralSeedHelper.Generate(), CultureInfo.InvariantCulture);
+        _bestSeed.Click += (_, _) => { if (ProcTechData.TryGetBestSeed(_viewModel.SelectedItem?.Id, out uint seed)) _technologySeed.Value = seed; };
+        _searchSeed.Click += async (_, _) =>
+        {
+            if (_database?.GetItem(_viewModel.SelectedItem?.Id ?? "") is not { } item) return;
+            uint? seed = await SeedSearchWindows.SearchTechnologyAsync(this, item);
+            if (seed is not null) _technologySeed.Value = seed.Value;
+        };
+        _technologySeed.ValueChanged += (_, _) =>
+        {
+            if (_refreshingSeed || _viewModel.SelectedItem is not { } selected) return;
+            _selectedSeeds[selected.Id] = (uint)(_technologySeed.Value ?? 0);
+            RefreshTechnologyPreview();
+        };
+        var manualArea = new StackPanel { Spacing = 5, Children = { _technologyTools, _technologyPreview, manualRow, warning } };
 
         _acceptButton = new Button
         {
@@ -156,8 +187,8 @@ public sealed class ItemPickerDialog : Window
         Closed += (_, _) => _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
-    public string? SelectedItemId => _viewModel.HasResult ? _viewModel.ResultItemId : null;
-    public IReadOnlyList<string> SelectedItemIds => _viewModel.ResultItemIds;
+    public string? SelectedItemId => _viewModel.HasResult ? SelectedItemIds.FirstOrDefault() : null;
+    public IReadOnlyList<string> SelectedItemIds => _viewModel.ResultItemIds.Select(id => _selectedSeeds.TryGetValue(id, out uint seed) ? $"{id}#{seed:D5}" : id).ToArray();
     public ItemPickerViewModel ViewModel => _viewModel;
 
     public void Initialize(
@@ -167,6 +198,8 @@ public sealed class ItemPickerDialog : Window
         string? filterType = null,
         bool multiSelect = false)
     {
+        _database = database;
+        _selectedSeeds.Clear();
         _itemGrid.SelectionMode = multiSelect ? DataGridSelectionMode.Extended : DataGridSelectionMode.Single;
         _viewModel.Initialize(database, iconProvider, filterCategory, filterType, multiSelect);
         _searchBox.Text = _viewModel.SearchText;
@@ -227,6 +260,7 @@ public sealed class ItemPickerDialog : Window
     private void OnGridSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         _viewModel.SetSelectedItems(_itemGrid.SelectedItems.OfType<ItemPickerItemViewModel>());
+        RefreshTechnologyPicker();
         UpdateAcceptState();
     }
 
@@ -236,6 +270,35 @@ public sealed class ItemPickerDialog : Window
             ConfirmAndClose(manualOnly: false);
     }
 
+    private void RefreshTechnologyPicker()
+    {
+        var selected = _viewModel.SelectedItem;
+        var item = _database?.GetItem(selected?.Id ?? "");
+        _technologyTools.IsVisible = item is { IsProcedural: true };
+        if (item is { IsProcedural: true } && selected is not null)
+        {
+            if (!_selectedSeeds.TryGetValue(selected.Id, out uint seed))
+                _selectedSeeds[selected.Id] = seed = uint.Parse(ProceduralSeedHelper.Generate(), CultureInfo.InvariantCulture);
+            _refreshingSeed = true; _technologySeed.Value = seed; _refreshingSeed = false;
+            _bestSeed.IsEnabled = ProcTechData.TryGetBestSeed(item.Id, out _);
+            _searchSeed.IsEnabled = item.StatLevels.Count > 0;
+        }
+        RefreshTechnologyPreview();
+    }
+
+    private void RefreshTechnologyPreview()
+    {
+        var item = _database?.GetItem(_viewModel.SelectedItem?.Id ?? "");
+        _technologyPreview.Text = ControlTokens.Resolve(item?.Description);
+        if (item is { IsProcedural: true })
+        {
+            uint seed = (uint)(_technologySeed.Value ?? 0);
+            _technologyPreview.Text = string.Join("; ", ProcTechLogic.Roll(item, seed)
+                .Select(roll => ProcTechLogic.FormatRollLine(roll, item.BaseStat, Localisation, null)));
+            ToolTip.SetTip(_technologyPreview, _technologyPreview.Text);
+        }
+    }
+
     private void OnConfirmSelection(object? sender, RoutedEventArgs e) => ConfirmAndClose(manualOnly: false);
     private void OnConfirmManual(object? sender, RoutedEventArgs e) => ConfirmAndClose(manualOnly: true);
 
@@ -243,7 +306,7 @@ public sealed class ItemPickerDialog : Window
     {
         bool confirmed = manualOnly ? _viewModel.ConfirmManualId() : _viewModel.ConfirmSelection();
         if (confirmed)
-            Close(_viewModel.ResultItemId);
+            Close(SelectedItemId);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)

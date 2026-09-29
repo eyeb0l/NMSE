@@ -52,7 +52,7 @@ public sealed partial class CataloguePanel
             case CatalogueTransferKind.Technologies: root.Set("KnownTechnologies", StringArray(_techRows.Select(row => row.Id))); break;
             case CatalogueTransferKind.Products: root.Set("KnownProducts", StringArray(_productRows.Select(row => row.Id))); break;
             case CatalogueTransferKind.Specials: root.Set("KnownSpecials", StringArray(_specialRows.Select(row => row.Id))); break;
-            case CatalogueTransferKind.Words: root.Set("KnownWords", StringArray(_wordRows.Select(row => row.Text))); break;
+            case CatalogueTransferKind.Words: root.Set("KnownWords", StringArray(_knownWordGroups is null ? [] : CatalogueLogic.CollectKnownWordIds(_knownWordGroups, _words.Words))); break;
             case CatalogueTransferKind.Glyphs:
             {
                 var values = new JsonArray();
@@ -154,28 +154,14 @@ public sealed partial class CataloguePanel
     private int ImportWords(JsonObject imported)
     {
         if (_knownWordGroups == null) return 0;
-        JsonArray? array = FirstArray(imported);
-        if (array == null) return 0;
-        int affected = 0;
+        JsonArray? array = imported.GetArray("KnownWords") ?? FirstArray(imported);
+        if (array is null) return 0;
+        var values = new List<string>();
         for (int i = 0; i < array.Length; i++)
-        {
-            string value;
-            try { value = array.GetString(i) ?? string.Empty; } catch { continue; }
-            WordEntry? word = _words.Words.FirstOrDefault(entry =>
-                entry.Id.Equals(value, StringComparison.OrdinalIgnoreCase) ||
-                entry.Text.Equals(value, StringComparison.CurrentCultureIgnoreCase));
-            if (word == null) continue;
-            CatalogueWordRow? row = _wordRows.FirstOrDefault(candidate => ReferenceEquals(candidate.Word, word));
-            foreach ((_, int race) in Races)
-            {
-                string? group = word.GetGroupForRace(race);
-                if (group == null) continue;
-                CatalogueLogic.SetWordKnown(_knownWordGroups, group, race, true);
-                row?.SetKnown(race, true, notifyBackingData: false);
-                affected++;
-            }
-        }
-        return affected;
+            if (array.GetString(i) is { } value) values.Add(value);
+        var result = CatalogueLogic.ApplyKnownWords(_knownWordGroups, _words.Words, values);
+        if (_playerState is not null) LoadWords(_playerState);
+        return result.Applied;
     }
 
     private int ImportGlyphs(JsonObject imported)

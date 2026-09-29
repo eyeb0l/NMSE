@@ -52,6 +52,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
     private SaveFileManager.Platform _platform = SaveFileManager.Platform.Unknown;
     private HashSet<string> _originalSeasonRedeemed = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _originalTwitchRedeemed = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _originalPlatformRedeemed = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _entitlementIds = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading;
 
     public AccountRewardsPanel(AvaloniaResourceCatalog resources, AccountRewardsDesktopActions desktop)
@@ -202,6 +204,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             SeasonUnlocked = season,
             TwitchUnlocked = twitch,
             PlatformUnlocked = platform,
+            SpecialsUnlocked = AccountLogic.GetUnlockedSet(settings.GetArray("UnlockedSpecials")),
             StatusMessage = UiStrings.Format("account.status_loaded", season.Count + twitch.Count + platform.Count),
         }, useMxml: UsesMxml);
     }
@@ -217,7 +220,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         {
             SetRedeemed(_seasonTab, season);
             SetRedeemed(_twitchTab, twitch);
-            SetRedeemed(_platformTab, []);
+            _originalPlatformRedeemed = BuildPlatformRedeemedSet(saveData);
+            SetRedeemed(_platformTab, _originalPlatformRedeemed);
         }
         finally
         {
@@ -236,7 +240,23 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
         AccountLogic.SaveRewardList(season.Select(row => (row.Id, row.Unlocked)).ToList(), settings, "UnlockedSeasonRewards");
         AccountLogic.SaveRewardList(twitch.Select(row => (row.Id, row.Unlocked)).ToList(), settings, "UnlockedTwitchRewards");
-        AccountLogic.SaveRewardList(platform.Select(row => (row.Id, row.Unlocked)).ToList(), settings, "UnlockedPlatformRewards");
+        AccountLogic.SaveRewardList(platform.Where(row => !_entitlementIds.Contains(row.Id)).Select(row => (row.Id, row.Unlocked)).ToList(), settings, "UnlockedPlatformRewards");
+        var specials = new List<(string Id, bool Present)>();
+        var seenTech = new List<(string Id, bool Present)>();
+        foreach (var row in platform.Where(row => _entitlementIds.Contains(row.Id)))
+        {
+            string product = CatalogueLogic.EnsureCaretPrefix(_productIds.GetValueOrDefault(row.Id, row.Id));
+            specials.Add((product, row.Unlocked));
+            if (AccountLogic.GetEntitlementSeenArrayName(_resources.Items.GetItem(product)) is not null)
+                seenTech.Add((product, row.Unlocked));
+        }
+        AccountLogic.SaveManagedRewardList(settings, "UnlockedSpecials", specials);
+        AccountLogic.SaveManagedRewardList(settings, "SeenTechnologies", seenTech);
+        if (saveData.GetObject("PlayerStateData") is { } player)
+            AccountLogic.SaveManagedRewardList(player, "RedeemedPlatformRewards",
+                platform.Where(row => !_entitlementIds.Contains(row.Id)).Select(row => (row.Id, row.Redeemed)).ToList());
+        AccountLogic.SyncKnownArraysForChangedRewards(saveData,
+            GetChangedRewards(platform, _originalPlatformRedeemed), _resources.Items, _productIds);
         AccountLogic.SaveRedeemedRewards(saveData,
             season.Select(row => (row.Id, row.Redeemed)).ToList(),
             twitch.Select(row => (row.Id, row.Redeemed)).ToList(),
@@ -268,7 +288,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
         IEnumerable<string> properties = _mxmlIsAccountStore
             ? MxmlRewardEditor.AccountArrayPropertyNames
-            : ["UnlockedPlatformRewards"];
+            : ["UnlockedPlatformRewards", "UnlockedSpecials", "SeenTechnologies"];
         bool saved = SyncMxmlSafely(accountData, properties);
         _mxmlStatus.Text = UiStrings.Get(saved ? "account.file_found" : "account.file_not_found");
         _mxmlStatus.Foreground = saved ? Brushes.Green : Brushes.IndianRed;
@@ -309,6 +329,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         _twitchRewards.Clear();
         _platformRewards.Clear();
         _productIds.Clear();
+        _entitlementIds.Clear();
+        foreach (var reward in RewardDatabase.EntitlementRewards) _entitlementIds.Add(reward.Id);
         AddDefinitions(_seasonRewards, RewardDatabase.SeasonRewards, includeSeason: true);
         AddDefinitions(_twitchRewards, RewardDatabase.TwitchRewards, includeSeason: false);
         AddDefinitions(_platformRewards, RewardDatabase.PlatformRewards, includeSeason: false);
@@ -376,6 +398,11 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             }
             PopulateRows(_seasonTab, _seasonRewards, data.SeasonUnlocked);
             PopulateRows(_twitchTab, _twitchRewards, data.TwitchUnlocked);
+            HashSet<string> specials = new(data.SpecialsUnlocked.Select(CatalogueLogic.StripCaretPrefix), StringComparer.OrdinalIgnoreCase);
+            if (useMxml && !_mxmlIsAccountStore && !string.IsNullOrWhiteSpace(_mxmlFilePath))
+                specials.IntersectWith(MxmlRewardEditor.ReadUnlockedSpecials(_mxmlFilePath).Select(CatalogueLogic.StripCaretPrefix));
+            foreach (string id in _entitlementIds)
+                if (specials.Contains(CatalogueLogic.StripCaretPrefix(_productIds.GetValueOrDefault(id, id)))) platformUnlocked.Add(id);
             PopulateRows(_platformTab, _platformRewards, platformUnlocked);
             _statusLabel.Text = data.StatusMessage ?? string.Empty;
         }
@@ -383,6 +410,18 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         {
             _loading = false;
         }
+    }
+
+    private HashSet<string> BuildPlatformRedeemedSet(JsonObject saveData)
+    {
+        var player = saveData.GetObject("PlayerStateData");
+        var result = AccountLogic.GetUnlockedSet(player?.GetArray("RedeemedPlatformRewards"));
+        var known = AccountLogic.GetUnlockedSet(player?.GetArray("KnownTech"));
+        known.UnionWith(AccountLogic.GetUnlockedSet(player?.GetArray("KnownSpecials")));
+        foreach (var definition in _platformRewards)
+            if (known.Contains(CatalogueLogic.EnsureCaretPrefix(_productIds.GetValueOrDefault(definition.Id, definition.Id))))
+                result.Add(definition.Id);
+        return result;
     }
 
     private void PopulateRows(

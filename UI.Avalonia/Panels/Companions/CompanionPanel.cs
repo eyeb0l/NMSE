@@ -19,7 +19,7 @@ namespace NMSE.UI.Avalonia.Panels.Companions;
 /// Complete editor for pet, egg, accessory, and pet-battle save state. Values are written
 /// directly to the loaded tree, matching the established editor's selection-safe behaviour.
 /// </summary>
-public sealed class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
+public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
 {
     private const string BuilderUrl = "https://creature.nmscd.com/#/builder";
     private static readonly string[] ClassItems = ["C", "B", "A", "S"];
@@ -506,6 +506,12 @@ public sealed class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
             Grid.SetColumn(_battleTeam[index], index * 2 + 1);
         }
         content.Children.Add(team);
+        _searchBattleSeed.Content = Get("companion.battle_search_seed", "Search Seed…");
+        _resetBattleRecord.Content = Get("companion.battle_reset_record", "Reset battle record");
+        _searchBattleSeed.Click += async (_, _) => await SearchBattleSeedAsync();
+        _resetBattleRecord.Click += async (_, _) => await ResetBattleRecordAsync();
+        content.Children.Add(_predictedBattleStats);
+        content.Children.Add(new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { _searchBattleSeed, _resetBattleRecord } });
 
         var classForm = FormGrid();
         int row = 0;
@@ -880,6 +886,7 @@ public sealed class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
             LoadDescriptors(companion);
             LoadAccessories(entry);
             LoadBattle(companion);
+            UpdateBattlePrediction();
             bool editablePet = entry.Source == "Pet" && !entry.IsEmpty;
             SetAccessoriesEnabled(editablePet);
             SetBattleEnabled(editablePet);
@@ -1017,7 +1024,7 @@ public sealed class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
 
     private void Modified()
     {
-        if (!_loading) DataModified?.Invoke(this, EventArgs.Empty);
+        if (!_loading) { UpdateBattlePrediction(); DataModified?.Invoke(this, EventArgs.Empty); }
     }
 
     private void WriteName()
@@ -1676,6 +1683,7 @@ public sealed class CompanionPanel : UserControl, ISaveEditorPanel, IGoToJsonSou
 
     private void SetBattleEnabled(bool enabled)
     {
+        _searchBattleSeed.IsEnabled = _resetBattleRecord.IsEnabled = enabled;
         _overrideClasses.IsEnabled = enabled;
         _victories.IsEnabled = enabled;
         _mutationProgress.IsEnabled = enabled;

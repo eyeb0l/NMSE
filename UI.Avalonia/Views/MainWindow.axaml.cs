@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
+using NMSE.UI.Avalonia.Inventory;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform.Storage;
@@ -114,7 +116,7 @@ public sealed partial class MainWindow : Window
         this.FindControl<Menu>("WindowMenu")!.IsVisible = !OperatingSystem.IsMacOS();
         Opened += OnOpened;
         Closing += OnClosing;
-        Closed += (_, _) => _resources.Dispose();
+        Closed += (_, _) => { _externalTimer?.Stop(); _resources.Dispose(); };
         MainTabs.SelectionChanged += OnTabSelectionChanged;
         KeyDown += OnWindowKeyDown;
         _panelCoordinator.DataModified += (_, _) => MarkDirty();
@@ -250,6 +252,7 @@ public sealed partial class MainWindow : Window
             _panelCoordinator.Register(1, _exosuitPanel);
             _exosuitPanel.GoToJsonRequested += OnGoToJsonRequested;
             _exosuitPanel.CrossInventoryTransferCompleted += (_, _) =>
+                _panelCoordinator.CommitLoadedPanels();
                 _panelCoordinator.RefreshLoaded(3, 4, 5, 7);
         }
 
@@ -268,6 +271,7 @@ public sealed partial class MainWindow : Window
             _panelCoordinator.Register(3, _starshipPanel);
             _starshipPanel.GoToJsonRequested += OnGoToJsonRequested;
             _starshipPanel.CrossInventoryTransferCompleted += (_, _) =>
+                _panelCoordinator.CommitLoadedPanels();
                 _panelCoordinator.RefreshLoaded(1, 4, 5, 7);
         }
 
@@ -286,6 +290,7 @@ public sealed partial class MainWindow : Window
             _panelCoordinator.Register(5, _exocraftPanel);
             _exocraftPanel.GoToJsonRequested += OnGoToJsonRequested;
             _exocraftPanel.CrossInventoryTransferCompleted += (_, _) =>
+                _panelCoordinator.CommitLoadedPanels();
                 _panelCoordinator.RefreshLoaded(1, 3, 4, 7);
         }
 
@@ -404,6 +409,7 @@ public sealed partial class MainWindow : Window
                     await ShowMessageAsync(title, message),
                 OpenUrlAsync = OpenCatalogueUrlAsync,
             };
+            _cataloguePanel.SetLocalisationService(_resources.Localisation);
             InstallEditorLock(CatalogueTab, _cataloguePanel);
             _panelCoordinator.Register(8, _cataloguePanel, purgeWhenInactive: true);
             _cataloguePanel.GoToJsonRequested += OnGoToJsonRequested;
@@ -604,6 +610,7 @@ public sealed partial class MainWindow : Window
             _currentSaveData = data;
             _currentSession = session;
             _currentFilePath = session.SourcePath;
+            ControlTokens.SetScheme(ControlTokens.SchemeForPlatform(session.Platform));
             _isDirty = false;
 
             _exosuitPanel?.SetSaveScopeKey(AppConfig.BuildSaveScopeKey(session.SourcePath));
@@ -633,6 +640,9 @@ public sealed partial class MainWindow : Window
 
             LoadedFileText.Text = Path.GetFileName(session.SourcePath);
             SetStatus($"Loaded {Path.GetFileName(session.SourcePath)}");
+            _isDirty = false;
+            CaptureExternalFiles();
+            ConfigureTechnologyActions();
             UpdateSaveActions();
         }
         catch (Exception ex)
@@ -675,6 +685,7 @@ public sealed partial class MainWindow : Window
     {
         if (_currentSaveData is null || session is null) return;
 
+        if (!await ConfirmExternalOverwriteAsync(session)) return;
         SetLoading(true, "Saving…");
         try
         {
@@ -683,7 +694,7 @@ public sealed partial class MainWindow : Window
             foreach (ISaveEditorPanel panel in _loadedPanels)
                 panel.SaveData(_currentSaveData);
 
-            string? directory = Path.GetDirectoryName(session.SourcePath);
+            string? directory = Directory.Exists(session.SourcePath) ? session.SourcePath : Path.GetDirectoryName(session.SourcePath);
             if (!string.IsNullOrWhiteSpace(directory) && Directory.Exists(directory))
                 SaveFileManager.BackupSaveDirectory(directory);
 
@@ -698,9 +709,11 @@ public sealed partial class MainWindow : Window
             await Task.Run(() => session.Save(_currentSaveData, accountData));
             _currentSession = session;
             _currentFilePath = session.SourcePath;
+            ControlTokens.SetScheme(ControlTokens.SchemeForPlatform(session.Platform));
             _isDirty = false;
             LoadedFileText.Text = Path.GetFileName(session.SourcePath);
             SetStatus($"Saved {Path.GetFileName(session.SourcePath)}");
+            CaptureExternalFiles();
         }
         catch (Exception ex)
         {
@@ -742,7 +755,7 @@ public sealed partial class MainWindow : Window
         SaveSession? session = _currentSession;
         if (session is null)
             return;
-        string? saveDirectory = Path.GetDirectoryName(session.SourcePath);
+        string? saveDirectory = Directory.Exists(session.SourcePath) ? session.SourcePath : Path.GetDirectoryName(session.SourcePath);
         if (string.IsNullOrWhiteSpace(saveDirectory))
             return;
 
@@ -997,7 +1010,7 @@ public sealed partial class MainWindow : Window
             switch (session.Kind)
             {
                 case SaveSessionKind.XboxContainer:
-                    Dictionary<string, XboxSlotInfo> slots = ContainersIndexManager.ParseContainersIndex(session.SourcePath);
+                    Dictionary<string, XboxSlotInfo> slots = SaveFileManager.EnumerateXboxSlots(session.SourcePath);
                     if (slots.TryGetValue(ContainersIndexManager.AccountDataIdentifier, out XboxSlotInfo? accountSlot))
                         _accountRewardsPanel.LoadXboxAccountData(accountSlot);
                     else
@@ -1106,8 +1119,7 @@ public sealed partial class MainWindow : Window
 
     private static IReadOnlyList<SaveSlotChoice> DiscoverXboxSlots(string directory)
     {
-        string indexPath = Path.Combine(directory, "containers.index");
-        var groups = ContainersIndexManager.ParseContainersIndex(indexPath)
+        var groups = SaveFileManager.EnumerateXboxSlots(directory)
             .Where(entry => ContainersIndexManager.IsSaveSlot(entry.Key))
             .GroupBy(entry => ContainersIndexManager.ExtractSlotNumber(entry.Key))
             .OrderBy(group => group.Key);
@@ -1118,7 +1130,7 @@ public sealed partial class MainWindow : Window
                 .OrderByDescending(entry => ContainersIndexManager.IsAutoSave(entry.Key))
                 .Select(entry => new SaveFileChoice(
                     ContainersIndexManager.IsAutoSave(entry.Key) ? "Auto" : "Manual",
-                    SaveSession.ForXbox(indexPath, entry.Key),
+                    SaveSession.ForXbox(directory, entry.Key),
                     entry.Value.DataFilePath is { } path && File.Exists(path)
                         ? File.GetLastWriteTime(path)
                         : DateTime.MinValue))
@@ -1350,14 +1362,26 @@ public sealed partial class MainWindow : Window
         UpdateSaveActions();
     }
 
+    private void ConfigureTechnologyActions()
+    {
+        foreach (InventoryGrid grid in this.GetLogicalDescendants().OfType<InventoryGrid>())
+        {
+            grid.ActiveLocalisation = _resources.Localisation;
+            grid.ConfigureTechnologyActions(() => _currentSaveData, _panelCoordinator.CommitLoadedPanels,
+                () => { _panelCoordinator.RefreshLoaded(1, 2, 3, 4, 5, 7); MarkDirty(); });
+        }
+    }
+
     private void OnTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
+        if (!ReferenceEquals(e.Source, MainTabs)) return;
         if (_currentSaveData is null)
             return;
 
         if (MainTabs.SelectedIndex == 14)
             _panelCoordinator.CommitLoadedPanels();
         _panelCoordinator.Activate(MainTabs.SelectedIndex);
+        ConfigureTechnologyActions();
         if (MainTabs.SelectedIndex == 14)
             _rawJsonPanel?.RefreshTree(_currentSaveData);
     }

@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using NMSE.Core;
 using NMSE.Core.Utilities;
 using NMSE.Data;
 using NMSE.Models;
@@ -18,7 +19,7 @@ namespace NMSE.UI.Avalonia.Inventory;
 /// loaded inventory immediately; <see cref="CommitPendingEdits"/> commits the focused
 /// detail controls before a save coordinator serializes the tree.
 /// </summary>
-public sealed class InventoryGrid : UserControl
+public sealed partial class InventoryGrid : UserControl
 {
     private const int DefaultWidth = 10;
     private const double DragThreshold = 6;
@@ -857,7 +858,8 @@ public sealed class InventoryGrid : UserControl
         state.ItemType = item?.ItemType ?? state.Slot.GetObject("Type")?.GetString("InventoryType") ?? string.Empty;
         state.ItemClass = InventoryItemResolver.ResolveClass(item, resolved.Class);
         state.ElementSymbol = item?.Symbol ?? string.Empty;
-        state.Description = item?.Description ?? string.Empty;
+        state.Description = ControlTokens.Resolve(item?.Description);
+        ResolveTechnologyDetails(state, item);
         state.IsChargeable = item?.IsChargeable ?? false;
         string? iconName = resolved.Icon ?? item?.Icon;
         ResolveCorvetteOverride(state, ref iconName);
@@ -969,14 +971,25 @@ public sealed class InventoryGrid : UserControl
         var starship = CreateMenuItem("inventory.ctx_auto_stack_starship", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToStarshipRequested, AutoStackToStarshipRequested));
         var freighter = CreateMenuItem("inventory.ctx_auto_stack_freighter", () => RaiseSelectedAutoStack(cell.State, AutoStackSelectedSlotToFreighterRequested, AutoStackToFreighterRequested));
 
+        var stats = CreateMenuItem("inventory.choose_stats", () => SearchTechnologyAsync(cell));
+        var pack = CreateMenuItem("inventory.ctx_package_tech", () => TransferTechnologyAsync(cell, false));
+        var unpack = CreateMenuItem("inventory.ctx_unpack_tech", () => TransferTechnologyAsync(cell, true));
+        stats.Header = UiStrings.GetOrNull("inventory.choose_stats") ?? "Choose Stats…";
+        pack.Header = UiStrings.GetOrNull("inventory.ctx_package_tech") ?? "Package technology…";
+        unpack.Header = UiStrings.GetOrNull("inventory.ctx_unpack_tech") ?? "Unpack / install technology…";
         var menu = new ContextMenu
         {
             ItemsSource = new object[] { add, remove, new Separator(), copy, paste, new Separator(), active, enableAll, pin, supercharge,
-                new Separator(), fill, repair, repairAll, new Separator(), storage, starship, freighter },
+                new Separator(), fill, repair, repairAll, stats, pack, unpack, new Separator(), storage, starship, freighter },
         };
         menu.Opening += (_, _) =>
         {
             bool hasItem = cell.State.HasItem;
+            var item = _database?.GetItem(ProceduralSeedHelper.Strip(cell.State.ItemId).baseId);
+            stats.IsVisible = hasItem && item is { IsProcedural: true } && item.StatLevels.Count > 0;
+            pack.IsVisible = hasItem && _isTechInventory && TechPackLogic.CanPackageTech(item, cell.State.ItemId, cell.State.DamageFactor, _slots);
+            unpack.IsVisible = hasItem && !_isTechInventory &&
+                (TechPackLogic.TryResolveTechId(cell.State.ItemId, _database, out _, out _) || TechPackLogic.TryResolveModuleTech(item, out _));
             add.Header = UiStrings.Get(hasItem ? "inventory.ctx_replace_item" : "inventory.ctx_add_item");
             add.IsEnabled = cell.State.IsActive || hasItem;
             remove.IsVisible = hasItem;

@@ -4,7 +4,7 @@ using global::Avalonia.Controls;
 
 namespace NMSE.UI.Avalonia.Panels.Starships;
 
-public sealed record StarshipImportPayload(JsonObject Ship, JsonObject? Base = null, JsonObject? Customisation = null);
+public sealed record StarshipImportPayload(JsonObject Ship, JsonObject? Base = null, JsonObject? Customisation = null, bool? UsesLegacyColours = null);
 
 internal sealed record ShipPartChoice(string Display, ShipCustomisationItem? Item)
 {

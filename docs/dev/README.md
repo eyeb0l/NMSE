@@ -146,5 +146,9 @@ FreeDesktop launcher template and local publishing notes.
 | 10 | Extractor pipeline (MBIN -> MXML -> JSON) | Game data is compiled into MBIN binary; the extractor decompiles to MXML, parses to dictionaries, then categorizes into JSON database files |
 | 11 | Multi-language localisation | Per-language JSON files in `Resources/json/lang/` (16 languages, BCP 47 tags). Items store `_LocStr` keys for runtime localisation lookup. The language menu switches live display language; internal logic retains English defaults while UI strings come from `Resources/ui/lang/` |
 
+### Reversed game code
+
+Some Core logic reimplements algorithms reversed from the game. These areas are deliberately not documented here: they are game-derived reference code, provided for save interoperability only, and are not covered by the project's licence. Do not add algorithm documentation for them.
+
 
 [githubOwner]: https://github.com/vectorcmdr

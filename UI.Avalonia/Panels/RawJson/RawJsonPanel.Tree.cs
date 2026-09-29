@@ -25,6 +25,21 @@ public partial class RawJsonPanel
     private void OnSplitTreeSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
         JsonTreeNode? node = SplitTree.SelectedItem as JsonTreeNode;
+        if (_isolateNode && !_suppressTextEvents)
+        {
+            if (_textDirty)
+            {
+                if (!TryCommitText(showErrors: true))
+                {
+                    _suppressTextEvents = true;
+                    SplitTree.SelectedItem = _isolatedNode;
+                    _suppressTextEvents = false;
+                    return;
+                }
+                node = SelectedNode;
+            }
+            ShowIsolatedNode(node);
+        }
         UpdateBreadcrumb(node);
         UpdateCommandState();
         if (node?.Key == null) return;
@@ -38,6 +53,38 @@ public partial class RawJsonPanel
         int line = 0;
         for (int i = 0; i < index; i++) if (text[i] == '\n') line++;
         SplitTextEditor.ScrollToLine(line);
+    }
+
+    private void OnIsolatePreferenceChanged(object? sender, RoutedEventArgs e)
+    {
+        if (_suppressIsolateToggle) return;
+        if (!TryCommitText(showErrors: true))
+        {
+            _suppressIsolateToggle = true;
+            IsolateCheck.IsChecked = _isolateNode;
+            _suppressIsolateToggle = false;
+            return;
+        }
+        _isolateNode = IsolateCheck.IsChecked == true;
+        NMSE.Config.AppConfig.Instance.RawJsonIsolateNode = _isolateNode;
+        NMSE.Config.AppConfig.Instance.Save();
+        if (_viewMode == ViewMode.Split)
+        {
+            if (_isolateNode) ShowIsolatedNode(SelectedNode ?? _splitTreeRoots.FirstOrDefault());
+            else ReloadCurrentView();
+        }
+    }
+
+    private void ShowIsolatedNode(JsonTreeNode? node)
+    {
+        if (node is null || node.IsPlaceholder) return;
+        _isolatedNode = node;
+        string snippet = RawJsonLogic.SerializeNodeSnippet(node.ParentContainer is JsonObject ? node.Key : null, node.Value);
+        _suppressTextEvents = true;
+        SplitTextEditor.Text = snippet;
+        _programmaticSplitText = snippet;
+        SplitSyntaxPreview.JsonText = snippet;
+        _suppressTextEvents = false;
     }
 
     private void UpdateBreadcrumb(JsonTreeNode? node)
@@ -449,7 +496,9 @@ public partial class RawJsonPanel
             _suppressTextEvents = true;
             try
             {
+                _isolatedNode = _splitTreeRoots.FirstOrDefault();
                 SplitTextEditor.Text = display;
+                _programmaticSplitText = display;
                 SplitSyntaxPreview.JsonText = display;
                 _textDirty = false;
             }

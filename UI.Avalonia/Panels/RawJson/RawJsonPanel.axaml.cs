@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using NMSE.Config;
 using NMSE.Core;
 using NMSE.Data;
 using NMSE.Models;
@@ -39,6 +40,11 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
     private bool _suppressDocumentSelection;
     private bool _suppressTextEvents;
     private bool _textDirty;
+    private string _programmaticText = string.Empty;
+    private string _programmaticSplitText = string.Empty;
+    private bool _isolateNode;
+    private bool _suppressIsolateToggle;
+    private JsonTreeNode? _isolatedNode;
     private int _searchIndex = -1;
     private string _lastSearch = string.Empty;
     private JsonTreeNode? _dragCandidate;
@@ -63,7 +69,11 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         Tree.ItemsSource = _treeRoots;
         SplitTree.ItemsSource = _splitTreeRoots;
         ApplyUiLocalisation();
-        SetMode(ViewMode.Tree, reload: false);
+        _isolateNode = AppConfig.Instance.RawJsonIsolateNode;
+        _suppressIsolateToggle = true;
+        IsolateCheck.IsChecked = _isolateNode;
+        _suppressIsolateToggle = false;
+        SetMode(Enum.TryParse(AppConfig.Instance.RawJsonViewMode, true, out ViewMode saved) ? saved : ViewMode.Tree, reload: false);
         UpdateDocumentSelector();
         UpdateCommandState();
     }
@@ -73,6 +83,8 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         _capturedSaveReference = saveData;
         _saveBaseline = JsonRootAction.Compress(RawJsonLogic.ToDisplayString(saveData));
     }
+
+    public bool HasPendingTextEdits => _textDirty;
 
     public void NotifyDataChanged() => SetStatus(string.Empty);
 
@@ -123,7 +135,8 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
 
     public JsonObject? GetEditedAccountData()
     {
-        if (_showingAccount && _textDirty) TryCommitText(showErrors: false);
+        if (_showingAccount && _textDirty && !TryCommitText(showErrors: false))
+            throw new JsonException(UiStrings.Get("raw_json.validation_error"));
         return _accountData;
     }
 
@@ -254,6 +267,8 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
     private void SetMode(ViewMode mode, bool reload = true)
     {
         _viewMode = mode;
+        AppConfig.Instance.RawJsonViewMode = mode.ToString().ToLowerInvariant();
+        if (reload) AppConfig.Instance.Save();
         Tree.IsVisible = mode == ViewMode.Tree;
         TextView.IsVisible = mode == ViewMode.Text;
         SplitView.IsVisible = mode == ViewMode.Split;
@@ -264,6 +279,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         CollapseButton.IsVisible = mode != ViewMode.Text;
         FormatButton.IsVisible = mode != ViewMode.Tree;
         ValidateButton.IsVisible = mode != ViewMode.Tree;
+        IsolateCheck.IsVisible = mode == ViewMode.Split;
         if (reload) ReloadCurrentView();
         UpdateCommandState();
     }
@@ -279,27 +295,33 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
                 _treeRoots.Clear();
                 _splitTreeRoots.Clear();
                 TextEditor.Text = string.Empty;
+                _programmaticText = string.Empty;
                 SplitTextEditor.Text = string.Empty;
+                _programmaticSplitText = string.Empty;
                 TextSyntaxPreview.JsonText = string.Empty;
                 SplitSyntaxPreview.JsonText = string.Empty;
                 return;
             }
 
-            string? display = null;
+            string display = string.Empty;
             if (_viewMode == ViewMode.Tree)
                 BuildTree(_treeRoots, data);
             else if (_viewMode == ViewMode.Text)
             {
                 display = RawJsonLogic.ToDisplayString(data);
                 TextEditor.Text = display;
-                TextSyntaxPreview.JsonText = display;
+                _programmaticText = display ?? string.Empty;
+                TextSyntaxPreview.JsonText = display ?? string.Empty;
             }
             else
             {
+                _isolatedNode = null;
                 BuildTree(_splitTreeRoots, data);
+                _isolatedNode = _splitTreeRoots.FirstOrDefault();
                 display = RawJsonLogic.ToDisplayString(data);
                 SplitTextEditor.Text = display;
-                SplitSyntaxPreview.JsonText = display;
+                _programmaticSplitText = display ?? string.Empty;
+                SplitSyntaxPreview.JsonText = display ?? string.Empty;
             }
             _textDirty = false;
         }
@@ -324,6 +346,14 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         string json = ActiveEditor.Text ?? string.Empty;
         try
         {
+            if (_viewMode == ViewMode.Split && _isolateNode && _isolatedNode is { } isolated)
+            {
+                // ApplyNodeSnippet rebuilds the tree; suppress pending-text handling during that rebuild.
+                _textDirty = false;
+                try { ApplyNodeSnippet(isolated, json); }
+                catch { _textDirty = true; throw; }
+                return true;
+            }
             JsonObject parsed = RawJsonLogic.ParseJson(json);
             string oldText = RawJsonLogic.ToDisplayString(target);
             byte[] before = JsonRootAction.Compress(oldText);
@@ -350,7 +380,8 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
 
     private void TextChanged(TextBox editor, JsonSyntaxView preview)
     {
-        if (_suppressTextEvents) return;
+        if (_suppressTextEvents || string.Equals(editor.Text ?? string.Empty,
+            ReferenceEquals(editor, SplitTextEditor) ? _programmaticSplitText : _programmaticText, StringComparison.Ordinal)) return;
         _textDirty = true;
         preview.JsonText = editor.Text ?? string.Empty;
         RaiseDataModified();

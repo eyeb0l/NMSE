@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Layout;
+using NMSE.UI.Avalonia.Dialogs;
 using NMSE.Core;
 using NMSE.Data;
 using NMSE.Models;
@@ -25,6 +26,7 @@ internal sealed class CompletionPanel : UserControl
     private List<Entry> _entries = [];
     private JsonObject? _save;
     private JsonObject? _account;
+    public LocalisationService? Localisation { get; set; }
     public event EventHandler? DataModified;
     public Func<string, string, CancellationToken, Task<bool>>? ConfirmAsync { get; set; }
 
@@ -52,7 +54,14 @@ internal sealed class CompletionPanel : UserControl
             if (_grid.SelectedItem is Entry entry && entry.SetProgress?.Invoke((int)(_progress.Value ?? 0)) == true)
             { DataModified?.Invoke(this, EventArgs.Empty); Reload(); }
         };
-        var actions = new WrapPanel { Orientation = Orientation.Horizontal, Children = { _complete, _clear, _all, _clearAll, _progress, _applyProgress } };
+        var notes = new Button { Content = "Developer commentary…", IsVisible = kind == "knowledge" };
+        notes.Click += async (_, _) =>
+        {
+            if (_save?.GetObject("PlayerStateData") is { } player && TopLevel.GetTopLevel(this) is Window owner
+                && await DevNotesWindow.ShowAsync(owner, player, Localisation))
+            { DataModified?.Invoke(this, EventArgs.Empty); Reload(); }
+        };
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal, Children = { _complete, _clear, _all, _clearAll, _progress, _applyProgress, notes } };
         var root = new Grid { Margin = new Thickness(10), RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
         root.Children.Add(_filter); root.Children.Add(_grid); Grid.SetRow(_grid, 1);
         root.Children.Add(actions); Grid.SetRow(actions, 2); root.Children.Add(_count); Grid.SetRow(_count, 3);

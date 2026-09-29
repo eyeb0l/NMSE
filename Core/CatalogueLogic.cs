@@ -22,19 +22,6 @@ internal static class CatalogueLogic
     };
 
     /// <summary>
-    /// Maps word group prefixes to their corresponding race indices for lookup.
-    /// </summary>
-    internal static readonly (string Prefix, int RaceIndex)[] RacePrefixes =
-    {
-        ("^TRA_", 0),
-        ("^WAR_", 1),
-        ("^EXP_", 2),
-        ("^ATLAS_", 4),
-        ("^ROBOT_", 3),
-        ("^AUTO_", 8),
-    };
-
-    /// <summary>
     /// Total number of race slots in the word knowledge arrays.
     /// </summary>
     internal const int TotalRaceCount = 9;
@@ -207,6 +194,83 @@ internal static class CatalogueLogic
     }
 
     /// <summary>
+    /// Collects the IDs of every word known for at least one race, in database order.
+    /// Used by the Known Words export so only learned words are written.
+    /// </summary>
+    /// <param name="knownWordGroups">The JSON array of known word group entries.</param>
+    /// <param name="words">The full word list from the word database.</param>
+    /// <returns>The known word IDs.</returns>
+    internal static List<string> CollectKnownWordIds(JsonArray knownWordGroups, IReadOnlyList<WordEntry> words)
+    {
+        var result = new List<string>();
+        if (knownWordGroups == null || words == null) return result;
+
+        for (int w = 0; w < words.Count; w++)
+        {
+            var word = words[w];
+            foreach (var (groupName, raceOrdinal) in word.Groups)
+            {
+                if (IsWordKnown(knownWordGroups, groupName, raceOrdinal))
+                {
+                    result.Add(word.Id);
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Applies the known state for imported word entries, matched by ID first and then by the
+    /// displayed text. Every race the word supports is marked as known.
+    /// </summary>
+    /// <param name="knownWordGroups">The JSON array of known word group entries.</param>
+    /// <param name="words">The full word list from the word database.</param>
+    /// <param name="entries">The imported entries (word IDs or displayed words).</param>
+    /// <returns>The number of words applied and the number skipped (not in the database).</returns>
+    internal static (int Applied, int Skipped) ApplyKnownWords(
+        JsonArray knownWordGroups, IReadOnlyList<WordEntry> words, IReadOnlyList<string> entries)
+    {
+        if (knownWordGroups == null || words == null)
+            return (0, entries?.Count ?? 0);
+
+        var byId = new Dictionary<string, WordEntry>(StringComparer.OrdinalIgnoreCase);
+        var byText = new Dictionary<string, WordEntry>(StringComparer.OrdinalIgnoreCase);
+        for (int w = 0; w < words.Count; w++)
+        {
+            var word = words[w];
+            string id = TrimId(word.Id);
+            if (id.Length > 0) byId.TryAdd(id, word);
+            string text = (word.Text ?? "").Trim();
+            if (text.Length > 0) byText.TryAdd(text, word);
+        }
+
+        int applied = 0, skipped = 0;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            string entry = (entries[i] ?? "").Trim();
+            if (entry.Length == 0) continue;
+
+            WordEntry? word = null;
+            string id = TrimId(entry);
+            if (id.Length > 0) byId.TryGetValue(id, out word);
+            if (word == null) byText.TryGetValue(entry, out word);
+            if (word == null)
+            {
+                skipped++;
+                continue;
+            }
+
+            foreach (var (groupName, raceOrdinal) in word.Groups)
+                SetWordKnown(knownWordGroups, groupName, raceOrdinal, true);
+            applied++;
+        }
+        return (applied, skipped);
+    }
+
+    private static string TrimId(string? id) => (id ?? "").Trim().TrimStart('^');
+
+    /// <summary>
     /// Updates the word-related stat counters in the save data to match the current KnownWordGroups.
     /// The game uses these counters for milestone tracking and validation.
     /// </summary>
@@ -219,7 +283,7 @@ internal static class CatalogueLogic
 
         // Count total known groups and per-race learned words
         int totalGroups = knownWordGroups.Length;
-        int gekCount = 0, vykeenCount = 0, korvaxCount = 0;
+        int gekCount = 0, vykeenCount = 0, korvaxCount = 0, autophageCount = 0;
         for (int i = 0; i < knownWordGroups.Length; i++)
         {
             try
@@ -227,9 +291,10 @@ internal static class CatalogueLogic
                 var entry = knownWordGroups.GetObject(i);
                 var races = entry?.GetArray("Races");
                 if (races == null) continue;
-                if (races.Length > 0 && races.GetBool(0)) gekCount++;     // Traders = 0
-                if (races.Length > 1 && races.GetBool(1)) vykeenCount++;  // Warriors = 1
-                if (races.Length > 2 && races.GetBool(2)) korvaxCount++;  // Explorers = 2
+                if (races.Length > 0 && races.GetBool(0)) gekCount++;       // Traders = 0
+                if (races.Length > 1 && races.GetBool(1)) vykeenCount++;    // Warriors = 1
+                if (races.Length > 2 && races.GetBool(2)) korvaxCount++;    // Explorers = 2
+                if (races.Length > 8 && races.GetBool(8)) autophageCount++; // Builders = 8
             }
             catch { }
         }
@@ -239,10 +304,12 @@ internal static class CatalogueLogic
         SetGlobalStatValue(globalStats, "^TWORDS_LEARNT", gekCount);
         SetGlobalStatValue(globalStats, "^WWORDS_LEARNT", vykeenCount);
         SetGlobalStatValue(globalStats, "^EWORDS_LEARNT", korvaxCount);
+        SetGlobalStatValue(globalStats, "^BWORDS_LEARNT", autophageCount);
     }
 
     /// <summary>
-    /// Sets the IntValue of a global stat entry. Creates it if not found.
+    /// Sets the IntValue of an existing global stat entry. If the stat entry is not
+    /// present in the save, the call is a no-op (the game seeds the full global stat list).
     /// </summary>
     private static void SetGlobalStatValue(JsonArray globalStats, string statId, int value)
     {

@@ -75,6 +75,7 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
     private JsonArray? _baseBuildingObjects;
     private JsonArray? _persistentPlayerBases;
     private StationChoice? _selectedStation;
+    private int _loadedVehicleIndex = -1;
     private bool _loading;
 
     public ExocraftPanel(
@@ -111,6 +112,7 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
         _vehicleSelector = new ComboBox { ItemsSource = _vehicles, MinWidth = 180 };
         _vehicleSelector.SelectionChanged += (_, _) => LoadSelectedVehicle();
         _name = new TextBox { MinWidth = 260 };
+        _name.TextChanged += (_, _) => CommitName();
         _name.LostFocus += (_, _) => CommitName();
         _export = ActionButton(ExportVehicleAsync);
         _import = ActionButton(ImportVehicleAsync);
@@ -380,6 +382,7 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
         _loading = true;
         try
         {
+            _loadedVehicleIndex = -1;
             _saveData = saveData;
             _playerState = saveData.GetObject("PlayerStateData");
             _vehicleOwnership = _playerState?.GetArray("VehicleOwnership");
@@ -478,8 +481,15 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
 
     private void LoadSelectedVehicle()
     {
+        if (!_loading && _loadedVehicleIndex >= 0)
+        {
+            CommitName();
+            CargoGrid.CommitPendingEdits();
+            TechnologyGrid.CommitPendingEdits();
+        }
         if (SelectedVehicle is not { } selected || _vehicleOwnership is null)
         {
+            _loadedVehicleIndex = -1;
             CargoGrid.LoadInventory(null);
             TechnologyGrid.LoadInventory(null);
             _goCargo.IsEnabled = false;
@@ -489,6 +499,7 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
         _loading = true;
         try
         {
+            _loadedVehicleIndex = selected.ArrayIndex;
             JsonObject vehicle = _vehicleOwnership.GetObject(selected.ArrayIndex);
             string owner = ExocraftLogic.GetOwnerTypeForVehicle(selected.InternalName);
             CargoGrid.SetInventoryOwnerType(owner);
@@ -517,8 +528,8 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
 
     private void CommitName()
     {
-        if (_loading || SelectedVehicle is not { } selected || _vehicleOwnership is null) return;
-        JsonObject vehicle = _vehicleOwnership.GetObject(selected.ArrayIndex);
+        if (_loading || _loadedVehicleIndex < 0 || _vehicleOwnership is null) return;
+        JsonObject vehicle = _vehicleOwnership.GetObject(_loadedVehicleIndex);
         string value = _name.Text ?? string.Empty;
         if (vehicle.GetString("Name") == value) return;
         vehicle.Set("Name", value);
@@ -552,7 +563,8 @@ public sealed class ExocraftPanel : UserControl, ISaveEditorPanel, IGoToJsonSour
 
     private void OnInventoryModified(InventoryGrid grid, bool technology)
     {
-        if (SelectedVehicle is not { } selected || grid.LoadedInventory is not { } inventory) return;
+        var selected = _vehicles.FirstOrDefault(vehicle => vehicle.ArrayIndex == _loadedVehicleIndex);
+        if (selected is null || grid.LoadedInventory is not { } inventory) return;
         DataModified?.Invoke(this, EventArgs.Empty);
         InventoryModified?.Invoke(this,
             new ExocraftInventoryModifiedEventArgs(selected.ArrayIndex, selected.InternalName, inventory, technology));

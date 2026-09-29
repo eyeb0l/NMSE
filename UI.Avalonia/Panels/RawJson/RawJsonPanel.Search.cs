@@ -228,6 +228,11 @@ public partial class RawJsonPanel
     private void OnFormat(object? sender, RoutedEventArgs e)
     {
         if (_viewMode == ViewMode.Tree) return;
+        if (_viewMode == ViewMode.Split && _isolateNode)
+        {
+            if (TryCommitText(showErrors: true)) SetStatus(UiStrings.Get("raw_json.json_valid"), Brushes.Green);
+            return;
+        }
         try
         {
             ActiveEditor.Text = RawJsonLogic.FormatJson(ActiveEditor.Text ?? string.Empty);
@@ -242,6 +247,11 @@ public partial class RawJsonPanel
     private void OnValidate(object? sender, RoutedEventArgs e)
     {
         if (_viewMode == ViewMode.Tree) return;
+        if (_viewMode == ViewMode.Split && _isolateNode)
+        {
+            if (TryCommitText(showErrors: true)) SetStatus(UiStrings.Get("raw_json.json_valid"), Brushes.Green);
+            return;
+        }
         try
         {
             RawJsonLogic.ParseJson(ActiveEditor.Text ?? string.Empty);

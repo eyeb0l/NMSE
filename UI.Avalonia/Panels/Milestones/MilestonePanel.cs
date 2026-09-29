@@ -363,7 +363,8 @@ public sealed class MilestonePanel : UserControl, ISaveEditorPanel, IGoToJsonSou
             S("Autophage", "milestone.autophage",
                 F("milestone.standing", "^BUI_STANDING"),
                 F("milestone.missions", "^BDONE_MISSIONS"),
-                F("milestone.autophage_met", "^BUI_MET")),
+                F("milestone.autophage_met", "^BUI_MET"),
+                F("milestone.radiant_shards", "^DRONE_SHARDS")),
         ],
         [
             S("Kills", "milestone.section_kills",

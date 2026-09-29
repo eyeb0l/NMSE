@@ -60,6 +60,38 @@ internal static class MxmlRewardEditor
         return FindMxmlPath(GetSteamInstallPaths());
     }
 
+    internal static string? FindMxmlPath(string? saveDirectory = null) =>
+        (string.IsNullOrWhiteSpace(saveDirectory) ? null : FindUserSettingsPath(saveDirectory))
+        ?? AutoDetectMxmlPath();
+
+    internal static HashSet<string> ReadUnlockedSeasonRewards(string path) => ReadPropertyValues(path, "UnlockedSeasonRewards");
+    internal static HashSet<string> ReadUnlockedTwitchRewards(string path) => ReadPropertyValues(path, "UnlockedTwitchRewards");
+    internal static HashSet<string> ReadUnlockedSpecials(string path) => ReadPropertyValues(path, "UnlockedSpecials");
+    internal static HashSet<string> ReadSeenTechnologies(string path) => ReadPropertyValues(path, "SeenTechnologies");
+
+    internal static bool WriteUnlockedSpecials(string path, List<(string Id, bool Present)> rewards) =>
+        SyncManagedRewards(path, "UnlockedSpecials", rewards);
+
+    internal static bool WriteSeenTechnologies(string path, List<(string Id, bool Present)> rewards) =>
+        SyncManagedRewards(path, "SeenTechnologies", rewards);
+
+    // Entitlement grids own only their listed IDs. Keep all other game-managed entries.
+    internal static bool SyncManagedRewards(string? path, string propertyName, List<(string Id, bool Present)> rewards)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return true;
+        try
+        {
+            JsonObject account = LoadAccountObject(path);
+            JsonObject settings = account.GetObject("UserSettingsData")!;
+            AccountLogic.SaveManagedRewardList(settings, propertyName,
+                rewards.Where(row => !string.IsNullOrWhiteSpace(row.Id))
+                    .Select(row => (NormalizeForJson(propertyName, NormalizeForMxml(row.Id)), row.Present)).ToList());
+            return WriteAccountObject(path, account, [propertyName]);
+        }
+        catch { return false; }
+    }
+
     /// <summary>Returns the first existing MXML file below the supplied Steam roots.</summary>
     internal static string? FindMxmlPath(IEnumerable<string> steamInstallPaths)
     {
@@ -69,8 +101,9 @@ internal static class MxmlRewardEditor
                 continue;
 
             string mxmlPath = Path.Combine(steamPath, SteamRelativePath);
-            if (File.Exists(mxmlPath))
-                return mxmlPath;
+            string? existing = ResolveExistingMxml(Path.GetDirectoryName(mxmlPath)!);
+            if (existing is not null)
+                return existing;
         }
 
         return null;
@@ -307,10 +340,6 @@ internal static class MxmlRewardEditor
     {
         if (!Directory.Exists(settingsDirectory))
             return null;
-
-        string expected = Path.Combine(settingsDirectory, MacOsMxmlFileName);
-        if (File.Exists(expected))
-            return expected;
 
         try
         {

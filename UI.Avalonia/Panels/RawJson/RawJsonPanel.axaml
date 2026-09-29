@@ -35,6 +35,7 @@
         <Button x:Name="ExpandButton" Content="Expand All" Click="OnExpandAll" />
         <Button x:Name="CollapseButton" Content="Collapse All" Click="OnCollapseAll" />
         <Button x:Name="FormatButton" Content="Format" Click="OnFormat" />
+        <CheckBox x:Name="IsolateCheck" Content="Isolate Node" IsCheckedChanged="OnIsolatePreferenceChanged" />
         <Button x:Name="ValidateButton" Content="Validate" Click="OnValidate" />
       </StackPanel>
     </ScrollViewer>
