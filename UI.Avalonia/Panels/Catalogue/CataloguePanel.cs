@@ -24,6 +24,8 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
     };
 
     private readonly GameItemDatabase _items;
+    private readonly CatalogueDatabase _catalogue = new(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+    private readonly TextBlock _techCompletion = new() { Name = "TechnologyCompletion" };
     private readonly RecipeDatabase _recipes;
     private readonly WordDatabase _words;
     private readonly AvaloniaIconProvider? _icons;
@@ -166,6 +168,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
             LoadFish(_playerState);
             LoadKnownRecipes(_playerState);
             foreach (var panel in _completionPanels) panel.LoadData(saveData);
+            UpdateTechnologyCompletion();
         }
         finally { _loading = false; }
     }
@@ -216,6 +219,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _locationGlyphs.PortalCode = string.Empty;
         _locationGalaxy.Text = string.Empty;
         _locationCore.Text = string.Empty;
+        _techCompletion.Text = string.Empty;
     }
 
     public void SetLocalisationService(LocalisationService service)
@@ -239,6 +243,9 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _knownRecipesTab.Header = UiStrings.Get("recipe.tab_known_recipes");
         _recipeBrowserTab.Header = UiStrings.Get("recipe.tab_recipe_info");
         LocaliseButtons();
+        if (_buttons.TryGetValue("Technologies.complete", out var complete))
+            complete.Content = UiStrings.Get("discovery.add_all_missing");
+        UpdateTechnologyCompletion();
         _techFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
         _productFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
         _specialFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
@@ -284,7 +291,14 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         var remove = RegisterButton($"{kind}.remove", CatalogueUi.Button(string.Empty, () => RemoveSelected(grid, rows, visible)));
         var export = RegisterButton($"{kind}.export", CatalogueUi.AsyncButton(string.Empty, () => ExportListAsync(kind)));
         var import = RegisterButton($"{kind}.import", CatalogueUi.AsyncButton(string.Empty, () => ImportListAsync(kind)));
-        return (grid, filter, CatalogueUi.PageGrid(top, grid, CatalogueUi.Toolbar(addButton, remove, export, import)));
+        var footer = CatalogueUi.Toolbar(addButton, remove, export, import);
+        if (kind == CatalogueTransferKind.Technologies)
+        {
+            var complete = RegisterButton("Technologies.complete", CatalogueUi.AsyncButton(string.Empty, CompleteTechnologiesAsync));
+            complete.Name = "CompleteTechnologies";
+            footer.Children.Add(complete); footer.Children.Add(_techCompletion);
+        }
+        return (grid, filter, CatalogueUi.PageGrid(top, grid, footer));
     }
 
     private (DataGrid Grid, TextBox Filter, Control Page) BuildWordsPage()
@@ -448,7 +462,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
 
     private Button RegisterButton(string key, Button button) { _buttons[key] = button; return button; }
     private void RequestGoTo(string path) => GoToJsonRequested?.Invoke(this, new GoToJsonRequestEventArgs(path));
-    private void RaiseModified() => DataModified?.Invoke(this, EventArgs.Empty);
+    private void RaiseModified() { UpdateTechnologyCompletion(); DataModified?.Invoke(this, EventArgs.Empty); }
     private Window? Owner => TopLevel.GetTopLevel(this) as Window;
 
     private static void Clear<T>(ObservableCollection<T> source, ObservableCollection<T> visible)

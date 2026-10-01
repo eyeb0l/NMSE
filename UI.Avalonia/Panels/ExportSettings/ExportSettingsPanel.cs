@@ -38,6 +38,7 @@ public sealed class ExportSettingsPanel : UserControl
         new("Settlement", null, c => c.SettlementExt, (c, v) => c.SettlementExt = v),
         new("ByteBeat", null, c => c.ByteBeatExt, (c, v) => c.ByteBeatExt = v),
         new("Outfit", null, c => c.OutfitExt, (c, v) => c.OutfitExt = v),
+        new("Hotkeys", null, c => c.HotkeysExt, (c, v) => c.HotkeysExt = v),
     ];
 
     private static readonly FieldDefinition[] TemplateDefinitions =
@@ -66,6 +67,7 @@ public sealed class ExportSettingsPanel : UserControl
         new("Settlement", "export_config.template_settlement", c => c.SettlementTemplate, (c, v) => c.SettlementTemplate = v),
         new("ByteBeat", "export_config.template_bytebeat", c => c.ByteBeatTemplate, (c, v) => c.ByteBeatTemplate = v),
         new("Outfit", "export_config.template_outfit", c => c.OutfitTemplate, (c, v) => c.OutfitTemplate = v),
+        new("Hotkeys", "export_config.template_hotkeys", c => c.HotkeysTemplate, (c, v) => c.HotkeysTemplate = v),
     ];
 
     private static readonly string[] HelpVariableKeys =

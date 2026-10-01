@@ -12,6 +12,8 @@ public sealed partial class PlayerPanel
         _generalTab.Header = UiStrings.Get("player.tab_general");
         _guidesTab.Header = UiStrings.Get("player.tab_guide");
         _titlesTab.Header = UiStrings.Get("player.tab_titles");
+        _hotkeysTab.Header = UiStrings.Get("player.tab_hotkeys");
+        _hotkeys.ApplyUiLocalisation();
 
         SetSection("stats", "player.section_stats");
         SetSection("save_info", "player.save_info");

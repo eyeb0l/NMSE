@@ -25,6 +25,7 @@ internal sealed class NoSaveOverlay : Border
             FontWeight = FontWeight.SemiBold,
             HorizontalAlignment = HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
         };
         _hint = new TextBlock
         {

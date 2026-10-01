@@ -114,6 +114,7 @@ public sealed partial class MainWindow : Window
         PlayerTab = this.FindControl<TabItem>(nameof(PlayerTab))!;
         _desktopServices = new AvaloniaDesktopServices(this);
         this.FindControl<Menu>("WindowMenu")!.IsVisible = !OperatingSystem.IsMacOS();
+        ConfigureWatchMenus();
         Opened += OnOpened;
         Closing += OnClosing;
         Closed += (_, _) => { _externalTimer?.Stop(); _resources.Dispose(); };
@@ -144,8 +145,7 @@ public sealed partial class MainWindow : Window
             ApplyLocalisation();
             DatabaseCountText.Text = UiStrings.Format("status.total_db_items", _resources.TotalItemCount);
 
-            string? defaultDirectory = SaveFileManager.FindDefaultSaveDirectory();
-            string? initialDirectory = AppConfig.Instance.LastDirectory ?? defaultDirectory;
+            string? initialDirectory = RecentDirectoryCombo.SelectedItem as string;
             if (!string.IsNullOrWhiteSpace(initialDirectory) && Directory.Exists(initialDirectory))
             {
                 DirectoryPathBox.Text = initialDirectory;
@@ -196,6 +196,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyLocalisation()
     {
+        UpdateWatchMenus();
         string[] keys =
         [
             "tab.player", "tab.exosuit", "tab.multitools", "tab.starships", "tab.fleet",
@@ -225,6 +226,7 @@ public sealed partial class MainWindow : Window
         if (_playerPanel is null)
         {
             _playerPanel = new PlayerPanel(_desktopServices, _resources.Icons);
+            _playerPanel.SetLocalisationService(_resources.Localisation);
             InstallEditorLock(PlayerTab, _playerPanel);
             _panelCoordinator.Register(0, _playerPanel);
             _playerPanel.GoToJsonRequested += OnGoToJsonRequested;
@@ -448,14 +450,18 @@ public sealed partial class MainWindow : Window
 
     private async void OnOpenDirectory(object? sender, EventArgs e)
     {
+        string? start = DirectoryPathBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(start) || !Directory.Exists(start)) start = SaveFileManager.FindDefaultSaveDirectory();
         var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
             Title = "Select No Man's Sky save directory",
             AllowMultiple = false,
+            SuggestedStartLocation = start is null ? null : await StorageProvider.TryGetFolderFromPathAsync(start),
         });
 
         string? path = folders.FirstOrDefault()?.TryGetLocalPath();
         if (string.IsNullOrWhiteSpace(path)) return;
+        path = ResolveToolbarDirectory(path);
 
         DirectoryPathBox.Text = path;
         AppConfig.Instance.AddRecentDirectory(path, SaveFileManager.FindDefaultSaveDirectory());
@@ -478,6 +484,7 @@ public sealed partial class MainWindow : Window
     {
         if (_updatingPathSelectors || RecentDirectoryCombo.SelectedItem is not string path || !Directory.Exists(path))
             return;
+        path = ResolveToolbarDirectory(path);
         DirectoryPathBox.Text = path;
         AppConfig.Instance.AddRecentDirectory(path, SaveFileManager.FindDefaultSaveDirectory());
         AppConfig.Instance.Save();
@@ -498,6 +505,8 @@ public sealed partial class MainWindow : Window
         string? path = DirectoryPathBox.Text?.Trim();
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             return;
+        path = ResolveToolbarDirectory(path);
+        DirectoryPathBox.Text = path;
         AppConfig.Instance.AddRecentDirectory(path, SaveFileManager.FindDefaultSaveDirectory());
         AppConfig.Instance.Save();
         RefreshPathSelectors();
@@ -524,12 +533,15 @@ public sealed partial class MainWindow : Window
             string? defaultSave = SaveFileManager.FindDefaultSaveDirectory();
             List<string> savePaths = config.RecentDirectories
                 .Concat(string.IsNullOrWhiteSpace(defaultSave) ? [] : [defaultSave])
+                .Concat(SaveFileManager.FindDefaultSaveDirectories())
                 .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
                 .ToList();
             RecentDirectoryCombo.ItemsSource = savePaths;
             RecentDirectoryCombo.SelectedItem = savePaths.FirstOrDefault(path =>
+                Directory.Exists(path) &&
                 string.Equals(path, config.LastDirectory,
-                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal));
+                    OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+                ?? savePaths.FirstOrDefault(Directory.Exists);
 
             string defaultBackup = SaveFileManager.ResolveBackupRoot();
             List<string> backupPaths = config.RecentBackupDirectories
@@ -549,6 +561,18 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnOpenDirectoryRouted(object? sender, RoutedEventArgs e) => OnOpenDirectory(sender, EventArgs.Empty);
+
+    private static string ResolveToolbarDirectory(string path)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            path = SaveFileManager.NormalizeMacOsSaveDirectory(path);
+            // The macOS NMS root offers every profile together, with SETTINGS alongside.
+            if (string.Equals(new DirectoryInfo(path).Name, "NMS", StringComparison.OrdinalIgnoreCase))
+                return path;
+        }
+        return SaveFileManager.ResolveSaveDirectory(path);
+    }
 
     private async void OnOpenFile(object? sender, EventArgs e)
     {
@@ -1051,6 +1075,12 @@ public sealed partial class MainWindow : Window
     private static IReadOnlyList<SaveSlotChoice> DiscoverSaveSlots(string directory)
     {
         SaveFileManager.Platform platform = SaveFileManager.DetectPlatform(directory);
+        if (platform == SaveFileManager.Platform.Unknown)
+        {
+            string resolved = SaveFileManager.ResolveSaveDirectory(directory);
+            if (SaveFileManager.DetectPlatform(resolved) == SaveFileManager.Platform.XboxGamePass)
+                return DiscoverXboxSlots(resolved);
+        }
 
         // macOS presents the stable NMS root in the toolbar. Its Steam/GOG profile
         // directories are enumerated here, while the sibling Settings directory is

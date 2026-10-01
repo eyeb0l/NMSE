@@ -23,6 +23,7 @@ public sealed partial class PlayerPanel
         try
         {
             JsonObject? playerState = saveData.GetObject("PlayerStateData");
+            _hotkeys.LoadData(playerState);
             if (playerState is null)
                 return;
 

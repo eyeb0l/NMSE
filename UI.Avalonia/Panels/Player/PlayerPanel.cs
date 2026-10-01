@@ -49,6 +49,8 @@ public sealed partial class PlayerPanel : UserControl, ISaveEditorPanel, IGoToJs
     private readonly TabItem _generalTab = new();
     private readonly TabItem _guidesTab = new();
     private readonly TabItem _titlesTab = new();
+    private readonly TabItem _hotkeysTab = new() { Name = "HotkeysTab" };
+    private readonly HotkeysPanel _hotkeys;
     private readonly Dictionary<string, TextBlock> _labels = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TextBlock> _sections = new(StringComparer.Ordinal);
 
@@ -137,6 +139,9 @@ public sealed partial class PlayerPanel : UserControl, ISaveEditorPanel, IGoToJs
     public PlayerPanel(IDesktopServices? desktopServices = null, AvaloniaIconProvider? iconProvider = null)
     {
         _desktopServices = desktopServices;
+        _hotkeys = new HotkeysPanel(desktopServices);
+        _hotkeysTab.Content = _hotkeys;
+        _hotkeys.DataModified += (_, _) => DataModified?.Invoke(this, EventArgs.Empty);
         _iconProvider = iconProvider;
         _titlesGrid = CreateTitlesGrid();
         BuildGeneralTab();
@@ -146,6 +151,7 @@ public sealed partial class PlayerPanel : UserControl, ISaveEditorPanel, IGoToJs
         _tabs.Items.Add(_generalTab);
         _tabs.Items.Add(_guidesTab);
         _tabs.Items.Add(_titlesTab);
+        _tabs.Items.Add(_hotkeysTab);
         _tabs.SelectedIndex = 0;
         Content = new Border
         {
@@ -163,6 +169,7 @@ public sealed partial class PlayerPanel : UserControl, ISaveEditorPanel, IGoToJs
     }
 
     public string PlayerName { get; private set; } = string.Empty;
+    public void SetLocalisationService(LocalisationService service) => _hotkeys.Localisation = service;
 
     public event EventHandler? DataModified;
     public event EventHandler? ReloadRequested;

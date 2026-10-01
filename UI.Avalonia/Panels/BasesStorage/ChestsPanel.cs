@@ -11,9 +11,9 @@ using NMSE.UI.Avalonia.Services;
 
 namespace NMSE.UI.Avalonia.Panels.BasesStorage;
 
-public sealed class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
+public sealed partial class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
 {
-    private readonly TabControl _tabs = new();
+    private readonly TabControl _tabs = new() { Name = "ChestTabs" };
     private readonly TabItem[] _pages = new TabItem[10];
     private readonly InventoryGrid[] _grids = new InventoryGrid[10];
     private readonly TextBox[] _nameFields = new TextBox[10];
@@ -32,6 +32,7 @@ public sealed class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
 
     public ChestsPanel(GameItemDatabase database, AvaloniaIconProvider? icons)
     {
+        _database = database;
         for (int i = 0; i < 10; i++)
         {
             int index = i;
@@ -61,8 +62,9 @@ public sealed class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
             content.Children.Add(nameRow); Grid.SetRow(_warnings[i], 1); content.Children.Add(_warnings[i]); Grid.SetRow(grid, 2); content.Children.Add(grid);
             _pages[i] = new TabItem { Content = content };
         }
-        _tabs.ItemsSource = _pages;
-        _tabs.SelectionChanged += (_, _) => EnsureLoaded(_tabs.SelectedIndex);
+        _tabs.ItemsSource = _pages.Append(BuildAllChestsPage()).ToArray();
+        _tabs.SelectedIndex = 0;
+        _tabs.SelectionChanged += (_, e) => { if (ReferenceEquals(e.Source, _tabs)) EnsureLoaded(_tabs.SelectedIndex); };
         Content = _tabs;
         ApplyUiLocalisation();
     }
@@ -70,6 +72,8 @@ public sealed class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
     public void LoadData(JsonObject saveData)
     {
         JsonObject? player = saveData.GetObject("PlayerStateData");
+        _playerState = player;
+        _allChestsStatus.Text = string.Empty;
         for (int i = 0; i < 10; i++)
         {
             _pending[i] = player?.GetObject(BaseLogic.ChestInventoryKeys[i]);
@@ -95,6 +99,7 @@ public sealed class ChestsPanel : UserControl, ISaveEditorPanel, IGoToJsonSource
             _rename[i].Content = UiStrings.Get("base.chest_rename"); _clear[i].Content = UiStrings.Get("base.chest_clear_name"); _warnings[i].Text = UiStrings.Get("base.chest_warning");
             _grids[i].ApplyUiLocalisation(); UpdateTitle(i);
         }
+        ApplyAllChestsLocalisation();
     }
 
     private void Rename(int index)

@@ -27,6 +27,7 @@ public sealed class XgsPathTests
             Assert.Equal("sLoT1mAnUaL", slot.Key);
             Assert.Equal(Path.Combine(directory, "data"), slot.Value.DataFilePath);
             Assert.Equal(SaveFileManager.Platform.XboxGamePass, SaveFileManager.DetectPlatform(root));
+            Assert.True(XgsSaveManager.HasSaveSlots(root));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -48,6 +49,7 @@ public sealed class XgsPathTests
             File.CreateSymbolicLink(Path.Combine(root, "Slot2Auto", "data"), Path.Combine(outside, "data"));
             Assert.Empty(XgsSaveManager.EnumerateSlots(root));
             Assert.False(XgsSaveManager.IsXgsContainerDirectory(root));
+            Assert.False(XgsSaveManager.HasSaveSlots(root));
             Assert.Contains("Outside", File.ReadAllText(Path.Combine(outside, "data")));
         }
         finally

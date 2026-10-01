@@ -55,7 +55,32 @@ public sealed partial class CataloguePanel
         UiStrings.Get("discovery.add_technology"),
         _techRows, _visibleTechRows, _techFilter,
         item => CatalogueLogic.TechItemTypes.Contains(item.ItemType) &&
-                !GameItemDatabase.IsPickerExcluded(item.Id) && CatalogueLogic.IsLearnableTechnology(item));
+                !item.BrokenSlotTech && !GameItemDatabase.IsPickerExcluded(item.Id) && CatalogueLogic.IsLearnableTechnology(item));
+
+    private void UpdateTechnologyCompletion()
+    {
+        if (_playerState == null) { _techCompletion.Text = string.Empty; return; }
+        var view = new JsonObject(); view.Set("KnownTech", StringArray(_techRows.Select(row => row.Id)));
+        var (have, total) = CatalogueCompletionLogic.GetCompletion(view, "KnownTech", _catalogue.KnownTechForCompletion(_items));
+        _techCompletion.Text = UiStrings.Format("discovery.completion_counter", have, total, total == 0 ? 0 : (int)Math.Round(100d * have / total));
+    }
+
+    private async Task CompleteTechnologiesAsync()
+    {
+        if (_playerState == null) return;
+        var ids = _catalogue.KnownTechForCompletion(_items);
+        var view = new JsonObject(); view.Set("KnownTech", StringArray(_techRows.Select(row => row.Id)));
+        var (have, total) = CatalogueCompletionLogic.GetCompletion(view, "KnownTech", ids);
+        if (have == total) return;
+        if (ConfirmAsync != null && !await ConfirmAsync(UiStrings.Get("discovery.add_all_missing_title"),
+            UiStrings.Format("discovery.add_all_missing_confirm", total - have), default)) return;
+        CatalogueLogic.SaveKnownItemIds(_playerState, "KnownTech", _techRows.Select(row => row.Id).ToList());
+        if (CatalogueCompletionLogic.AddMissingIds(_playerState, "KnownTech", ids) > 0)
+        {
+            LoadKnownItems(_playerState, "KnownTech", _techRows, _visibleTechRows, _techFilter.Text);
+            RaiseModified();
+        }
+    }
 
     private Task AddProductAsync() => AddItemsAsync(
         UiStrings.Get("discovery.add_product"),
