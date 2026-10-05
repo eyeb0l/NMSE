@@ -17,7 +17,7 @@
     <PublishAot>false</PublishAot>
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredPGO>true</TieredPGO>
-    <ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows'))">Resources\app\NMSE.ico</ApplicationIcon>
+    <ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows')) Or '$(RuntimeIdentifier)' == 'win-x64'">Resources\app\NMSE.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 

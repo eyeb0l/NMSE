@@ -5,6 +5,8 @@ using Xunit.Abstractions;
 
 namespace NMSE.Tests;
 
+// Reloads shared static databases; serialize with their other readers and writers.
+[Collection("MutableStaticDatabases")]
 public class TempStartupBenchTests
 {
     private readonly ITestOutputHelper _output;

@@ -2,7 +2,7 @@
 
 A comprehensive guide to running NMSE (No Man's Save Editor) on Linux using Wine.
 
-> **Note:** NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review.
+> **Legacy guide:** This describes historical Windows/Wine releases. Current releases use native Avalonia on Windows, Linux and macOS. See [Building and publishing](building.md) and the [installation guide](../user/README.md#getting-started). Wine-based AppImage/DMG packages are no longer built.
 
 ---
 

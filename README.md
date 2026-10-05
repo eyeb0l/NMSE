@@ -149,17 +149,19 @@ You can view the NMSE development roadmap **[here][roadmap]** for upcoming, plan
 
 > 💡 **Tip:** _NMSE auto-detects your save file location for Steam, GOG, and Xbox Game Pass_
 
-### Linux & macOS:
+### Linux
 
-Wine based AppImage and DMG are available from the release page.<br>
-See the cross-platform guides for running NMSE via Wine:
+Download the native `NMSE-<version>-linux-x64.tar.gz`, extract it and run `./NMSE`.
+Keep the bundled runtime and `Resources/` beside the executable.
 
-- 🐧 Linux AppImage with WINE included **(RECOMMENDED)**
-- 🥃 [Gcenx Wine Builds on macOS][guide-gcenx-wine] (free, recommended for macOS)
-- 🍎 [CrossOver on macOS][guide-crossover] (paid, supported)
-- Advanced usage under Linux: 🍷 [Wine on Linux][guide-wine] or 🧴 [Bottles on Linux][guide-bottles]
+### macOS
 
-NMSE is a Windows app that also runs on Linux/macOS via Wine compatibility layers (AppImage/DMG provided). Options for a native port are under review. Release assets are named `NMSE-<version>-Release.zip`, `NMSE-<version>-Release-x64.AppImage` and `NMSE-<version>-Release-x64.dmg`.
+Download `NMSE-<version>-macOS-arm64.dmg` for Apple Silicon or
+`NMSE-<version>-macOS-x64.dmg` for Intel (macOS 14+). Open the DMG and drag
+**NMSE.app** to Applications. Architecture-labelled ZIPs are also available.
+
+All platforms use the native Avalonia frontend with a bundled .NET runtime.
+Wine, Whisky, Bottles and CrossOver are not required.
 
 ---
 
@@ -183,48 +185,26 @@ NMSE is licensed under the **GNU Affero General Public License** - see the [LICE
 
 ## 🛠️ Building from Source
 
-```bash
-# Clone the repository
-git clone https://github.com/vectorcmdr/NMSE.git
-cd NMSE
-
-# Restore and compile the cross-platform Avalonia app
-dotnet restore NMSE.csproj
-dotnet build NMSE.csproj
-
-# Run the app from source
-dotnet run --project NMSE.csproj
-
-# Run cross-platform tests
-dotnet test NMSE.Tests/
-
-# Run Windows-only extractor tests (Windows only)
-dotnet test NMSE.Extractor.Tests/
-```
-
-> **Requires:** [.NET 10.0 SDK][dotnet] on Windows, Linux, or macOS. Running `dotnet build`
-> without a project builds the entire solution, including the Windows-only `NMSE.Extractor`.
-
-`dotnet build` produces a development executable in `Build/bin/NMSE/Debug/net10.0/`;
-it does not create a macOS `.app` bundle. To build the Apple Silicon macOS app, updater
-ZIP, and drag-install DMG:
+Install the [.NET 10 SDK][dotnet] and Python 3.10 or later, then use the shared build scripts:
 
 ```bash
-dotnet publish NMSE.csproj -c Release -r osx-arm64 --self-contained true \
-  -p:PublishAot=false -o Build/publish/osx-arm64
-scripts/macos/build-dmg.sh Build/publish/osx-arm64 osx-arm64 Build/macos
+./scripts/build.sh build             # Development build
+./scripts/build.sh test              # Core, Avalonia and updater tests
+./scripts/build.sh publish windows   # Windows x64 ZIP
+./scripts/build.sh publish linux     # Linux x64 tarball
+./scripts/build.sh publish macos     # Apple Silicon and Intel ZIPs/DMGs
+./scripts/build.sh publish all       # All targets (requires a Mac)
 ```
 
-The packaged artifacts are written to `Build/macos/`. On an Intel Mac, replace
-`osx-arm64` with `osx-x64` in both commands.
+On Windows, use `.\scripts\build.ps1` with the same arguments, for example
+`.\scripts\build.ps1 publish windows`. You can also run `python scripts/build.py` directly.
 
-For a self-contained Windows or Linux executable, replace `<RID>` with `win-x64` or
-`linux-x64`:
+Publishing runs tests and writes self-contained, versioned packages to `Build/artifacts/`.
+Use `dotnet run --project NMSE.csproj` to run from source. Avoid a bare solution build
+on macOS/Linux because it includes the Windows-only extractor.
 
-```bash
-dotnet publish NMSE.csproj -c Release -r <RID> --self-contained true \
-  -p:PublishAot=false -o Build/publish/<RID>
-```
+See [Building and publishing](docs/dev/building.md) for prerequisites, individual runtimes,
+output options, macOS signing and the shared CI workflows.
 
 ---
 

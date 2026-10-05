@@ -48,7 +48,8 @@ This guide walks you through every feature of the application so you can confide
 1. Download the latest version from the [**Releases page**][releases]
 2. On Windows, extract the ZIP and launch **`NMSE.exe`**. On Linux, extract the
    `linux-x64` tarball and run **`NMSE`**. On macOS, open the DMG and drag
-   **NMSE.app** to Applications.
+   **NMSE.app** to Applications. Choose `macOS-arm64` for Apple Silicon or
+   `macOS-x64` for Intel; Windows packages are labelled `windows-x64`.
 
 > 💡 Every release is self-contained. A separate .NET runtime, Wine, Whisky, Bottles,
 > or CrossOver is not required.

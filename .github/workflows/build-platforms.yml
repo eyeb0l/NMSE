@@ -1,0 +1,111 @@
+# Shared by release builds and PR validation. Keep build logic in scripts/build.py.
+name: Build platforms
+
+on:
+  workflow_call:
+    inputs:
+      sign_macos:
+        description: Allow release jobs to use the repository's macOS signing secrets.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            rid: win-x64
+          - runner: ubuntu-latest
+            rid: linux-x64
+          - runner: macos-15
+            rid: osx-arm64
+          - runner: macos-15-intel
+            rid: osx-x64
+    env:
+      AVALONIA_TELEMETRY_OPTOUT: "1"
+      MACOS_CERTIFICATE_P12: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.MACOS_CERTIFICATE_P12 || '' }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.MACOS_CERTIFICATE_PASSWORD || '' }}
+      MACOS_SIGN_IDENTITY: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.MACOS_SIGN_IDENTITY || '' }}
+      APPLE_ID: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.APPLE_ID || '' }}
+      APPLE_TEAM_ID: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.APPLE_TEAM_ID || '' }}
+      APPLE_APP_PASSWORD: ${{ inputs.sign_macos && startsWith(matrix.rid, 'osx-') && secrets.APPLE_APP_PASSWORD || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test build scripts
+        run: python -m unittest discover -s scripts/tests -v
+
+      - name: Configure macOS signing
+        if: startsWith(matrix.rid, 'osx-') && inputs.sign_macos
+        shell: bash
+        run: |
+          if [[ -n "$MACOS_CERTIFICATE_P12$MACOS_CERTIFICATE_PASSWORD$MACOS_SIGN_IDENTITY" ]]; then
+            if [[ -z "$MACOS_CERTIFICATE_P12" || -z "$MACOS_CERTIFICATE_PASSWORD" || -z "$MACOS_SIGN_IDENTITY" ]]; then
+              echo "Developer ID certificate secrets are incomplete" >&2
+              exit 1
+            fi
+            KEYCHAIN="$RUNNER_TEMP/nmse-signing.keychain-db"
+            KEYCHAIN_PASSWORD="$(uuidgen)"
+            echo "::add-mask::$KEYCHAIN_PASSWORD"
+            echo "$MACOS_CERTIFICATE_P12" | base64 -D > "$RUNNER_TEMP/nmse-signing.p12"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security import "$RUNNER_TEMP/nmse-signing.p12" -k "$KEYCHAIN" \
+              -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s \
+              -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+            security default-keychain -d user -s "$KEYCHAIN"
+          fi
+          if [[ -n "$APPLE_ID$APPLE_TEAM_ID$APPLE_APP_PASSWORD" ]]; then
+            if [[ -z "$APPLE_ID" || -z "$APPLE_TEAM_ID" || -z "$APPLE_APP_PASSWORD" || -z "$MACOS_SIGN_IDENTITY" ]]; then
+              echo "Notarization secrets are incomplete" >&2
+              exit 1
+            fi
+            xcrun notarytool store-credentials nmse-notary \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+            echo "MACOS_NOTARY_PROFILE=nmse-notary" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build, test and package
+        shell: bash
+        run: |
+          args=()
+          if [[ "${{ matrix.rid }}" == osx-* ]]; then
+            args+=(--smoke-test)
+          fi
+          python scripts/build.py publish "${{ matrix.rid }}" "${args[@]}"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: NMSE-${{ matrix.rid }}
+          path: Build/artifacts/*
+          if-no-files-found: error
+
+      - name: Remove signing credentials
+        if: always() && startsWith(matrix.rid, 'osx-') && inputs.sign_macos
+        shell: bash
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/nmse-signing.keychain-db"
+          if [[ -f "$KEYCHAIN" ]]; then
+            security default-keychain -d user -s login.keychain-db
+            security list-keychains -d user -s login.keychain-db
+            security delete-keychain "$KEYCHAIN"
+          fi
+          rm -f "$RUNNER_TEMP/nmse-signing.p12"

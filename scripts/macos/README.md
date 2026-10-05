@@ -6,14 +6,24 @@ Wine, Whisky, CrossOver, or a separately installed .NET runtime.
 ## Build locally
 
 ```bash
-dotnet publish NMSE.csproj -c Release -r osx-arm64 \
-  --self-contained true -p:PublishAot=false -o Build/publish/osx-arm64
-scripts/macos/build-dmg.sh Build/publish/osx-arm64 osx-arm64 Build/macos
+./scripts/build.sh publish macos                  # Both architectures
+./scripts/build.sh publish osx-arm64 --smoke-test # Apple Silicon only
+./scripts/build.sh publish osx-x64                # Intel only
 ```
 
-Use `osx-x64` on an Intel runner. The script produces an architecture-labelled updater
-ZIP and drag-install DMG, and validates the app's bundle identifier, minimum OS,
-architecture, signature, resources, ZIP paths, and DMG integrity.
+Run these commands from the repository root on a Mac. They restore, test, publish,
+package and validate, writing versioned ZIPs and DMGs to `Build/artifacts/`. The shared
+[build guide](../../docs/dev/building.md) covers prerequisites and output options.
+
+For an existing self-contained publish, the low-level packager remains available:
+
+```bash
+scripts/macos/build-dmg.sh /path/to/publish osx-arm64 /path/to/artifacts
+```
+
+Its legacy default output directory is `Build/macos/`; the shared publish command
+always passes its artifact directory explicitly. Both paths validate the app's bundle
+identifier, minimum OS, architecture, signature, resources, ZIP paths and DMG integrity.
 
 The runtime payload is copied to `NMSE.app/Contents/MacOS`; the large application data
 tree is copied to `NMSE.app/Contents/Resources`. `NMSE_RESOURCE_DIR` may override the

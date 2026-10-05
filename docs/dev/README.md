@@ -31,7 +31,9 @@ lives in the Core and Data layers so the UI layer stays thin.
 | Project | Description |
 |---------|-------------|
 | **NMSE** (`NMSE.csproj`) | Cross-platform Avalonia application -- Core, Data, IO, Models, `UI.Avalonia`, Config, Resources |
-| **NMSE.Tests** (`NMSE.Tests/`) | Unit tests for the main application |
+| **NMSE.Tests** (`NMSE.Tests/`) | Core unit tests |
+| **NMSE.Avalonia.Tests** | Avalonia headless UI tests |
+| **NMSE.MacUpdater.Tests** | macOS updater tests |
 | **NMSE.Extractor** (`NMSE.Extractor/`) | Console tool that extracts game data from NMS PAK files |
 | **NMSE.Extractor.Tests** (`NMSE.Extractor.Tests/`) | Unit tests for the extractor |
 | **NMSE.Site** (`NMSE.Site/`) | Static web companion site (HTML/JS/CSS) for GitHub Pages |
@@ -42,13 +44,19 @@ site and is not part of the solution.
 
 ### Build System
 
-The application targets generic .NET 10.0 and publishes managed, self-contained payloads
-(`PublishAot=false`) for Windows, Linux, and both macOS architectures.
+See [Building and publishing](building.md) for the shared local/CI commands:
 
-- **Development**: `dotnet build` produces managed IL (fast, supports debugging).
-- **Release**: `dotnet publish -c Release -r <RID> --self-contained true` produces a
-  platform-native payload. Users do not need .NET installed.
-- Tiered PGO is enabled for managed runtime builds. Native AOT is deferred until after parity.
+```bash
+./scripts/build.sh build
+./scripts/build.sh test
+./scripts/build.sh publish all   # Windows, Linux, Apple Silicon and Intel macOS; requires a Mac
+```
+
+Windows uses `scripts/build.ps1` with the same arguments. All build logic lives in
+`scripts/build.py` (Python standard library). Publishing tests once, then produces
+managed, self-contained .NET 10 packages in `Build/artifacts/`. Tiered PGO is enabled;
+Native AOT is deferred until after parity. Use an explicit project for raw SDK commands
+because the solution also includes the Windows-only extractor.
 
 ## Documentation Index
 
@@ -125,10 +133,11 @@ The data extraction pipeline that converts NMS game archives into editor databas
 
 ### Cross-platform packaging
 
-CI validates native Avalonia builds on Windows and Linux and creates self-contained native
-macOS app bundles for both `osx-arm64` and `osx-x64`. `scripts/macos/` contains bundle,
-signing, notarization, ZIP/DMG, and validation tooling; `scripts/linux/` contains the
-FreeDesktop launcher template and local publishing notes.
+[The build guide](building.md) covers all four runtime targets, output layout and the
+shared release/PR matrix. `scripts/macos/` retains the bundle, signing, notarization and
+ZIP/DMG validation tooling; `scripts/linux/` contains the FreeDesktop launcher template.
+The older Wine/CrossOver/Bottles guides describe legacy Windows releases and are not
+part of the current native build or installation path.
 
 ## Key Architectural Decisions
 

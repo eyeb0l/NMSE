@@ -9,8 +9,13 @@ Thank you for your interest in contributing! This project is licensed under **AG
 3. Run existing tests and make sure everything passes.
 
 ```bash
-# dotnet test
+./scripts/build.sh build
+./scripts/build.sh test
 ```
+
+On Windows use `.\scripts\build.ps1 build` and `.\scripts\build.ps1 test`.
+Install the .NET 10 SDK and Python 3.10 or later. See
+[Building and publishing](../docs/dev/building.md) for release packages and CI.
 
 ## 📌 Code Style
 
