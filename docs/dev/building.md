@@ -1,7 +1,7 @@
 # Building and publishing NMSE
 
 Use one entry point for local development, tests and release packages. CI calls the
-same Python script on Windows, Linux, Apple Silicon macOS and Intel macOS.
+same Python script on Windows, x64 and ARM64 Linux, Apple Silicon macOS and Intel macOS.
 
 ## Requirements
 
@@ -54,9 +54,9 @@ Each command restores, tests, publishes and packages the selected targets:
 
 ```bash
 ./scripts/build.sh publish windows   # Windows x64 ZIP
-./scripts/build.sh publish linux     # Linux x64 tar.gz
+./scripts/build.sh publish linux     # Linux x64 AND ARM64 tar.gz
 ./scripts/build.sh publish macos     # Apple Silicon AND Intel ZIPs and DMGs
-./scripts/build.sh publish all       # All four runtimes; run this on a Mac
+./scripts/build.sh publish all       # All five runtimes; run this on a Mac
 ./scripts/build.sh publish           # This host's supported runtime
 ```
 
@@ -70,13 +70,14 @@ The same commands work in PowerShell, for example:
 Windows and Linux packages can be built on any supported host. Complete macOS
 packaging requires macOS for signing and disk-image creation. Selecting `all` or a
 macOS target on another OS fails before any build starts; use CI for a complete set
-from Windows or Linux. Automatic host selection supports x64 Windows/Linux and arm64
-or x64 macOS. Linux ARM64 and Windows ARM64 release packages are not currently provided.
+from Windows or Linux. Automatic host selection supports x64 Windows, ARM64 or x64
+Linux, and ARM64 or x64 macOS. Windows ARM64 release packages are not currently provided.
 
-To select a single runtime, use `win-x64`, `linux-x64`, `osx-arm64` or `osx-x64`:
+To select a single runtime, use `win-x64`, `linux-x64`, `linux-arm64`, `osx-arm64` or `osx-x64`:
 
 ```bash
 ./scripts/build.sh publish osx-arm64 --smoke-test
+./scripts/build.sh publish linux-arm64
 ./scripts/build.sh publish all --output /path/to/release-build
 ./scripts/build.sh publish windows --skip-tests
 ```
@@ -97,6 +98,7 @@ Default outputs are under the repository's ignored `Build/` directory:
 | `Build/publish/<rid>/` | Latest successful self-contained publish for that runtime |
 | `Build/artifacts/NMSE-<version>-windows-x64.zip` | Windows executable, runtime and resources |
 | `Build/artifacts/NMSE-<version>-linux-x64.tar.gz` | Linux executable, runtime and resources |
+| `Build/artifacts/NMSE-<version>-linux-arm64.tar.gz` | ARM64 Linux executable, runtime and resources |
 | `Build/artifacts/NMSE-<version>-macOS-arm64.zip` and `.dmg` | Apple Silicon `NMSE.app` |
 | `Build/artifacts/NMSE-<version>-macOS-x64.zip` and `.dmg` | Intel `NMSE.app` |
 
@@ -115,6 +117,12 @@ the whole archive and launch `NMSE.exe` or `./NMSE`; retain the runtime and Reso
 beside the executable. Linux executable permissions are preserved, including when
 cross-publishing on Windows. Linux still needs its normal desktop/native libraries;
 the bundled .NET runtime does not replace OS dependencies.
+
+Choose a Linux archive matching `uname -m`: `linux-arm64` for `aarch64`/`arm64`,
+or `linux-x64` for `x86_64`. An x64 binary on ARM64 Linux fails with
+`cannot execute binary file: Exec format error`; use the ARM64 package and extract it
+into a fresh directory. Publishing validates the architecture of the Linux launcher,
+.NET runtime, Skia and HarfBuzz libraries before creating an archive.
 
 ## macOS signing
 
@@ -137,7 +145,8 @@ See the macOS README for credential setup and optional entitlements.
 
 ## GitHub Actions
 
-- `build-platforms.yml` owns the four-runner build/test/package matrix. Both callers
+- `build-platforms.yml` owns the five-runner build/test/package matrix, including an
+  ARM64 Ubuntu runner. Both callers
   upload the same versioned packages, and both macOS runners perform launch checks.
 - `validate-pr.yml` calls it without signing secrets. Script, app, resource and test
   changes trigger validation, including Windows-only extractor changes.

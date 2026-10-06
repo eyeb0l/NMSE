@@ -151,7 +151,9 @@ You can view the NMSE development roadmap **[here][roadmap]** for upcoming, plan
 
 ### Linux
 
-Download the native `NMSE-<version>-linux-x64.tar.gz`, extract it and run `./NMSE`.
+Run `uname -m` to choose the native package: `NMSE-<version>-linux-arm64.tar.gz`
+for `aarch64`/`arm64`, or `NMSE-<version>-linux-x64.tar.gz` for `x86_64`.
+Extract it and run `./NMSE`.
 Keep the bundled runtime and `Resources/` beside the executable.
 
 ### macOS
@@ -191,7 +193,7 @@ Install the [.NET 10 SDK][dotnet] and Python 3.10 or later, then use the shared 
 ./scripts/build.sh build             # Development build
 ./scripts/build.sh test              # Core, Avalonia and updater tests
 ./scripts/build.sh publish windows   # Windows x64 ZIP
-./scripts/build.sh publish linux     # Linux x64 tarball
+./scripts/build.sh publish linux     # Linux x64 AND ARM64 tarballs
 ./scripts/build.sh publish macos     # Apple Silicon and Intel ZIPs/DMGs
 ./scripts/build.sh publish all       # All targets (requires a Mac)
 ```

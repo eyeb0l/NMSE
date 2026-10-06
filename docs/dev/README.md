@@ -133,7 +133,7 @@ The data extraction pipeline that converts NMS game archives into editor databas
 
 ### Cross-platform packaging
 
-[The build guide](building.md) covers all four runtime targets, output layout and the
+[The build guide](building.md) covers all five runtime targets, output layout and the
 shared release/PR matrix. `scripts/macos/` retains the bundle, signing, notarization and
 ZIP/DMG validation tooling; `scripts/linux/` contains the FreeDesktop launcher template.
 The older Wine/CrossOver/Bottles guides describe legacy Windows releases and are not

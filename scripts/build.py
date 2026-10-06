@@ -18,9 +18,9 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 TARGETS = {
     "windows": ("win-x64",),
-    "linux": ("linux-x64",),
+    "linux": ("linux-x64", "linux-arm64"),
     "macos": ("osx-arm64", "osx-x64"),
-    "all": ("win-x64", "linux-x64", "osx-arm64", "osx-x64"),
+    "all": ("win-x64", "linux-x64", "linux-arm64", "osx-arm64", "osx-x64"),
 }
 RIDS = TARGETS["all"]
 TEST_PROJECTS = (
@@ -36,8 +36,12 @@ def native_rid():
         return "osx-arm64" if platform.machine().lower() in ("arm64", "aarch64") else "osx-x64"
     if system == "Windows" and platform.machine().lower() in ("amd64", "x86_64"):
         return "win-x64"
-    if system == "Linux" and platform.machine().lower() in ("amd64", "x86_64"):
-        return "linux-x64"
+    if system == "Linux":
+        architecture = platform.machine().lower()
+        if architecture in ("arm64", "aarch64"):
+            return "linux-arm64"
+        if architecture in ("amd64", "x86_64"):
+            return "linux-x64"
     raise ValueError("No release target for this host; choose an explicit target.")
 
 
@@ -102,6 +106,14 @@ def validate_payload(directory, rid):
     for name in required:
         if not (directory / name).exists():
             raise ValueError(f"Incomplete {rid} publish: missing {name}")
+    if rid.startswith("linux-"):
+        expected_machine = {"linux-x64": 62, "linux-arm64": 183}[rid]
+        for name in ("NMSE", "libcoreclr.so", "libSkiaSharp.so", "libHarfBuzzSharp.so"):
+            with (directory / name).open("rb") as binary:
+                header = binary.read(20)
+            if (len(header) < 20 or header[:6] != b"\x7fELF\x02\x01"
+                    or int.from_bytes(header[18:20], "little") != expected_machine):
+                raise ValueError(f"Invalid native architecture for {rid}: {name}")
     config = json.loads((directory / "NMSE.runtimeconfig.json").read_text(encoding="utf-8"))["runtimeOptions"]
     if "includedFrameworks" not in config or "framework" in config or "frameworks" in config:
         raise ValueError(f"{rid} publish is not self-contained.")
@@ -195,7 +207,7 @@ def publish(rids, configuration, output, skip_tests=False, smoke=False):
                 if smoke:
                     smoke_test(packages / f"NMSE-{version}-macOS-{rid.split('-')[1]}.zip", rid)
             else:
-                label = "windows-x64.zip" if rid == "win-x64" else "linux-x64.tar.gz"
+                label = "windows-x64.zip" if rid == "win-x64" else f"{rid}.tar.gz"
                 write_archive(payload, packages / f"NMSE-{version}-{label}", rid)
             publish_root = output / "publish"
             publish_root.mkdir(exist_ok=True)

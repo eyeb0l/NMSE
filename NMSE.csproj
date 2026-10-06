@@ -13,7 +13,7 @@
     <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <PlatformTarget>AnyCPU</PlatformTarget>
-    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64</RuntimeIdentifiers>
+    <RuntimeIdentifiers>osx-arm64;osx-x64;win-x64;linux-x64;linux-arm64</RuntimeIdentifiers>
     <PublishAot>false</PublishAot>
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredPGO>true</TieredPGO>

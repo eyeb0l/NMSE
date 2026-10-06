@@ -23,6 +23,12 @@ def payload(directory, rid):
     names += ["coreclr.dll" if rid == "win-x64" else ("libcoreclr.dylib" if rid.startswith("osx-") else "libcoreclr.so")]
     for name in names:
         (directory / name).write_text("fixture", encoding="utf-8")
+    if rid.startswith("linux-"):
+        header = bytearray(20)
+        header[:6] = b"\x7fELF\x02\x01"
+        header[18:20] = (183 if rid == "linux-arm64" else 62).to_bytes(2, "little")
+        for name in ("NMSE", "libcoreclr.so", "libSkiaSharp.so", "libHarfBuzzSharp.so"):
+            (directory / name).write_bytes(header)
     (directory / "NMSE.runtimeconfig.json").write_text(
         json.dumps({"runtimeOptions": {"includedFrameworks": [{"name": "Microsoft.NETCore.App", "version": "10.0.0"}]}}),
         encoding="utf-8")
@@ -42,13 +48,15 @@ class BuildTests(unittest.TestCase):
         self.root_patch.start()
         self.addCleanup(self.root_patch.stop)
 
-    def test_all_targets_include_both_macos_architectures(self):
-        self.assertEqual(build.select_rids("all"), ("win-x64", "linux-x64", "osx-arm64", "osx-x64"))
+    def test_all_targets_include_both_linux_and_macos_architectures(self):
+        self.assertEqual(build.select_rids("all"), ("win-x64", "linux-x64", "linux-arm64", "osx-arm64", "osx-x64"))
 
     def test_platform_and_explicit_runtime_selection(self):
         self.assertEqual(build.select_rids("macos"), ("osx-arm64", "osx-x64"))
         self.assertEqual(build.select_rids("windows"), ("win-x64",))
         self.assertEqual(build.select_rids("linux-x64"), ("linux-x64",))
+        self.assertEqual(build.select_rids("linux"), ("linux-x64", "linux-arm64"))
+        self.assertEqual(build.select_rids("linux-arm64"), ("linux-arm64",))
 
     def test_native_macos_architectures(self):
         with patch.object(build.platform, "system", return_value="Darwin"):
@@ -56,8 +64,14 @@ class BuildTests(unittest.TestCase):
                 with patch.object(build.platform, "machine", return_value=architecture):
                     self.assertEqual(build.select_rids("native"), (rid,))
 
-    def test_native_linux_arm_requires_explicit_supported_target(self):
-        with patch.object(build.platform, "system", return_value="Linux"), patch.object(build.platform, "machine", return_value="aarch64"):
+    def test_native_linux_architectures(self):
+        with patch.object(build.platform, "system", return_value="Linux"):
+            for architecture, rid in (("aarch64", "linux-arm64"), ("arm64", "linux-arm64"), ("x86_64", "linux-x64")):
+                with patch.object(build.platform, "machine", return_value=architecture):
+                    self.assertEqual(build.select_rids("native"), (rid,))
+
+    def test_native_linux_32_bit_arm_requires_explicit_supported_target(self):
+        with patch.object(build.platform, "system", return_value="Linux"), patch.object(build.platform, "machine", return_value="armv7l"):
             with self.assertRaisesRegex(ValueError, "explicit target"):
                 build.select_rids("native")
 
@@ -116,6 +130,36 @@ class BuildTests(unittest.TestCase):
             json.dumps({"runtimeOptions": {"framework": {"name": "Microsoft.NETCore.App"}}}), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "not self-contained"):
             build.validate_payload(directory, "win-x64")
+
+    def test_linux_payload_rejects_wrong_architecture_in_launcher_and_libraries(self):
+        for name in ("NMSE", "libcoreclr.so", "libSkiaSharp.so", "libHarfBuzzSharp.so"):
+            with self.subTest(binary=name), tempfile.TemporaryDirectory(dir=self.root) as temporary:
+                directory = Path(temporary) / "publish"
+                payload(directory, "linux-arm64")
+                header = bytearray((directory / name).read_bytes())
+                header[18:20] = (62).to_bytes(2, "little")
+                (directory / name).write_bytes(header)
+                with self.assertRaisesRegex(ValueError, "Invalid native architecture"):
+                    build.validate_payload(directory, "linux-arm64")
+
+    def test_linux_payload_rejects_non_elf_launcher(self):
+        directory = self.root / "publish"
+        payload(directory, "linux-arm64")
+        (directory / "NMSE").write_bytes(b"not an executable")
+        with self.assertRaisesRegex(ValueError, "Invalid native architecture"):
+            build.validate_payload(directory, "linux-arm64")
+
+    def test_linux_publish_creates_distinct_architecture_packages(self):
+        with patch.object(build, "preflight"), patch.object(build, "test") as tests, patch.object(build, "run", side_effect=self.fake_publish):
+            build.publish(build.select_rids("linux"), "Release", self.root / "output")
+        tests.assert_called_once_with("Release")
+        artifacts = self.root / "output/artifacts"
+        self.assertEqual({path.name for path in artifacts.iterdir()},
+                         {"NMSE-1.4.29-linux-x64.tar.gz", "NMSE-1.4.29-linux-arm64.tar.gz"})
+        for rid, machine in (("linux-x64", 62), ("linux-arm64", 183)):
+            with tarfile.open(artifacts / f"NMSE-1.4.29-{rid}.tar.gz") as archive:
+                self.assertEqual(int.from_bytes(archive.extractfile("NMSE").read()[18:20], "little"), machine)
+                self.assertTrue(archive.getmember("NMSE").mode & 0o111)
 
     def test_zip_has_executable_and_resources_at_root(self):
         directory = self.root / "publish"

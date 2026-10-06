@@ -40,14 +40,15 @@ This guide walks you through every feature of the application so you can confide
 
 ### What You Need
 
-- **Windows 10/11, Linux x64, or macOS 14+** (Apple Silicon or Intel)
+- **Windows 10/11, Linux x64 or ARM64, or macOS 14+** (Apple Silicon or Intel)
 - A *No Man's Sky* save file from any supported platform
 
 ### Installing NMSE
 
 1. Download the latest version from the [**Releases page**][releases]
 2. On Windows, extract the ZIP and launch **`NMSE.exe`**. On Linux, extract the
-   `linux-x64` tarball and run **`NMSE`**. On macOS, open the DMG and drag
+   tarball and run **`./NMSE`**. Choose `linux-arm64` when `uname -m` reports
+   `aarch64`/`arm64`, or `linux-x64` for `x86_64`. On macOS, open the DMG and drag
    **NMSE.app** to Applications. Choose `macOS-arm64` for Apple Silicon or
    `macOS-x64` for Intel; Windows packages are labelled `windows-x64`.
 
@@ -84,7 +85,7 @@ If a save and slot are already selected, click <kbd>Load</kbd> and you're good t
 
 While no save is loaded, every editing tab shows a no-save overlay and its controls are greyed out. **Export Settings** and **Database Search** stay usable because they do not need a save.
 
-> ℹ️ Save folders under Linux (using the AppImage, you can browse with either / or Z:).
+> ℹ️ Common Linux save folders:
 > 
 > - SteamOS: ```/home/deck/.local/share/Steam/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS/st_<steamid>/```
 > - Flatpak: ```/var/home/<username>/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS/st_<steamid>/```
