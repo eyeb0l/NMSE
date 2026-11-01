@@ -6,6 +6,12 @@ on:
     branches: [main]
     paths: [version.json]
   workflow_dispatch:
+    inputs:
+      smoke_only:
+        description: "Build and test without creating a release"
+        type: choice
+        options: ["false", "true"]
+        default: "false"
 
 permissions:
   contents: read
@@ -24,7 +30,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     needs: build
-    if: github.repository == 'vectorcmdr/NMSE'
+    if: github.repository == 'vectorcmdr/NMSE' && (github.event_name != 'workflow_dispatch' || inputs.smoke_only != 'true')
     permissions:
       contents: write
     env:

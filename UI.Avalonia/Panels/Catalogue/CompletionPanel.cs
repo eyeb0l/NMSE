@@ -58,7 +58,7 @@ internal sealed class CompletionPanel : UserControl
         notes.Click += async (_, _) =>
         {
             if (_save?.GetObject("PlayerStateData") is { } player && TopLevel.GetTopLevel(this) is Window owner
-                && await DevNotesWindow.ShowAsync(owner, player, Localisation))
+                && await DevNotesWindow.ShowAsync(owner, player, Localisation, _catalogue))
             { DataModified?.Invoke(this, EventArgs.Empty); Reload(); }
         };
         var actions = new WrapPanel { Orientation = Orientation.Horizontal, Children = { _complete, _clear, _all, _clearAll, _progress, _applyProgress, notes } };
@@ -124,18 +124,23 @@ internal sealed class CompletionPanel : UserControl
         }
         else if (player != null && _kind == "knowledge")
         {
-            foreach (var status in CatalogueCompletionLogic.GetKnowledgeStatuses(player))
+            foreach (var status in CatalogueCompletionLogic.GetKnowledgeStatuses(player, _catalogue))
             {
                 var page = status.Page;
-                if (page.Recipe == KnowledgeRecipe.Words) continue;
+                if (page.Recipe == KnowledgeRecipe.Words)
+                {
+                    var (have, total) = CatalogueCompletionLogic.GetWordPageCompletion(player, _catalogue, page);
+                    _entries.Add(new(page.Name, page.Id, have == total, have, total, _ => false));
+                    continue;
+                }
                 _entries.Add(new(page.Name, page.Id, status.Status == "OK", status.LastSeen, page.TableMax,
-                    done => done ? CatalogueCompletionLogic.ApplyKnowledgePage(player, page, _catalogue.StoryCompleters) : CatalogueCompletionLogic.ClearKnowledgePage(player, page),
-                    value => CatalogueCompletionLogic.ApplyKnowledgePageProgress(player, page, value)));
+                    done => done ? CatalogueCompletionLogic.ApplyKnowledgePage(player, page, _catalogue.StoryCompleters, _catalogue) : CatalogueCompletionLogic.ClearKnowledgePage(player, page, _catalogue),
+                    value => CatalogueCompletionLogic.ApplyKnowledgePageProgress(player, page, value, _catalogue)));
             }
-            foreach (var status in CatalogueCompletionLogic.GetKnowledgeCompleterStatuses(player, _catalogue.StoryCompleters))
+            foreach (var status in CatalogueCompletionLogic.GetKnowledgeCompleterStatuses(player, _catalogue.StoryCompleters, _catalogue))
                 _entries.Add(new(status.Name, status.Id, status.Complete, status.Current, status.Target,
-                    done => done ? CatalogueCompletionLogic.ApplyKnowledgeCompleter(player, status, _catalogue.StoryCompleters) : CatalogueCompletionLogic.ClearKnowledgeCompleter(player, status),
-                    value => CatalogueCompletionLogic.ApplyKnowledgeCompleterProgress(player, status, value)));
+                    done => done ? CatalogueCompletionLogic.ApplyKnowledgeCompleter(player, status, _catalogue.StoryCompleters, _catalogue) : CatalogueCompletionLogic.ClearKnowledgeCompleter(player, status, _catalogue),
+                    value => CatalogueCompletionLogic.ApplyKnowledgeCompleterProgress(player, status, value, _catalogue)));
         }
         else if (player != null && _save != null && _kind == "wonders")
         {

@@ -12,7 +12,7 @@ namespace NMSE.Avalonia.Tests;
 public sealed class BaseEditorPortTests
 {
     [AvaloniaFact]
-    public void LoadData_ListsOnlyVersionThreeHomeAndFreighterBases()
+    public void LoadData_ListsCurrentLegacyAndUnrecognisedBases()
     {
         var panel = new BasesEditorPanel();
 
@@ -21,9 +21,7 @@ public sealed class BaseEditorPortTests
         var list = GetField<ListBox>(panel, "_baseList");
         string[] labels = list.Items.Cast<object>().Select(item => item.ToString()!).ToArray();
 
-        Assert.Equal(new[] { "[0] Planet Haven", "[1] [F] Sky Whale" }, labels);
-        Assert.DoesNotContain(labels, label => label.Contains("Old", StringComparison.Ordinal));
-        Assert.DoesNotContain(labels, label => label.Contains("Settlement", StringComparison.Ordinal));
+        Assert.Equal(new[] { "[0] Planet Haven", "[1] [F] Sky Whale", "[2] Old Home", "[3] [F] Old Freighter", "[4] Settlement Base" }, labels);
     }
 
     [AvaloniaFact]

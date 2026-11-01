@@ -10,10 +10,11 @@ namespace NMSE.UI.Avalonia.Dialogs;
 
 internal static class DevNotesWindow
 {
-    internal static async Task<bool> ShowAsync(Window owner, JsonObject player, LocalisationService? localisation)
+    internal static async Task<bool> ShowAsync(Window owner, JsonObject player, LocalisationService? localisation, CatalogueDatabase? catalogue = null)
     {
+        var page = CatalogueCompletionLogic.ResolvePage(KnowledgeCatalogue.Pages.First(p => p.Id == "jr_devnotes"), catalogue);
         string Text(string key) => localisation?.Lookup(key) ?? ProcTechLogic.LookupGameString(null, key) ?? key;
-        var count = new NumericUpDown { Minimum = 0, Maximum = DevNotesLogic.EntryCount, Value = DevNotesLogic.GetUnlockedCount(player), Width = 120 };
+        var count = new NumericUpDown { Minimum = 0, Maximum = DevNotesLogic.EntryCount, Value = DevNotesLogic.GetUnlockedCount(player, page.Slot, page.PageIndex), Width = 120 };
         var entries = new ListBox { ItemsSource = DevNotesLogic.Entries.Select(entry => $"{entry.Index + 1}. {Text(entry.NameLocKey)}").ToArray(), Height = 260 };
         var commentary = new TextBlock { TextWrapping = TextWrapping.Wrap };
         entries.SelectionChanged += (_, _) =>
@@ -39,7 +40,7 @@ internal static class DevNotesWindow
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { apply, cancel } },
             } },
         };
-        apply.Click += (_, _) => { bool changed = DevNotesLogic.SetUnlockedCount(player, (int)(count.Value ?? 0)); window.Close(changed); };
+        apply.Click += (_, _) => { bool changed = DevNotesLogic.SetUnlockedCount(player, (int)(count.Value ?? 0), page.Slot, page.PageIndex); window.Close(changed); };
         cancel.Click += (_, _) => window.Close(false);
         entries.SelectedIndex = 0;
         return await window.ShowDialog<bool>(owner);

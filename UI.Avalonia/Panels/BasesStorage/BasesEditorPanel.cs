@@ -2,6 +2,9 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+using Avalonia.Controls.Selection;
+using NMSE.Config;
 using Avalonia.Layout;
 using Avalonia.Media;
 using NMSE.Core;
@@ -19,7 +22,10 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
     private readonly ObservableCollection<NpcWorkerItem> _workers = [];
     private readonly ObservableCollection<BaseObjectItem> _objects = [];
     private readonly ObservableCollection<string> _partCounts = [];
-    private readonly ListBox _baseList = new() { Width = 320 };
+    private readonly ListBox _baseList = new() { MinWidth = 230, SelectionMode = SelectionMode.Multiple };
+    private readonly TextBox _baseFilter = new();
+    private readonly CheckBox _showHiddenBases = new();
+    private readonly ColumnDefinition _baseColumn = new(Math.Clamp(AppConfig.Instance.BaseListWidth, 230, 900), GridUnitType.Pixel);
     private readonly ListBox _objectList = new() { MinHeight = 100 };
     private readonly ListBox _parts = new() { MinHeight = 110 };
     private readonly ComboBox _worker = new();
@@ -69,7 +75,19 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
     {
         _baseList.ItemsSource = _baseItems; _worker.ItemsSource = _workers; _objectList.ItemsSource = _objects; _parts.ItemsSource = _partCounts;
         _race.ItemsSource = BaseNpcRaces.Items();
-        _baseList.SelectionChanged += (_, _) => LoadSelectedBase();
+        _baseList.ItemTemplate = new FuncDataTemplate<BaseListItem>((item, _) => new StackPanel { Spacing = 2, Children =
+        {
+            new TextBlock { Text = item?.ToString(), TextTrimming = TextTrimming.CharacterEllipsis },
+            new TextBlock { Text = item == null ? "" : $"{BaseKindLabel(BaseListLogic.Classify(item.Data))} · {UiStrings.Get("base.col_objects")}: {item.Data.GetArray("Objects")?.Length ?? 0} · v{BaseListLogic.GetVersion(item.Data)}", Opacity = 0.65 }
+        }});
+        _baseList.SelectionChanged += (_, _) => { if (!_loading) LoadSelectedBase(); };
+        _showHiddenBases.IsChecked = AppConfig.Instance.BaseListShowHidden;
+        _baseFilter.TextChanged += (_, _) => RebuildBaseItems();
+        _showHiddenBases.IsCheckedChanged += (_, _) =>
+        {
+            AppConfig.Instance.BaseListShowHidden = _showHiddenBases.IsChecked == true;
+            AppConfig.Instance.Save(); RebuildBaseItems();
+        };
         _worker.SelectionChanged += (_, _) => LoadSelectedWorker();
         _race.SelectionChanged += (_, _) => ChangeWorkerRace();
         _npcSeed.LostFocus += (_, _) => CommitWorkerSeed();
@@ -103,15 +121,19 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
         _objectsTab.Content = BuildObjectsEditor();
         _details.Child = new TabControl { ItemsSource = new[] { _infoTab, _objectsTab } };
 
-        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto") };
-        _baseListTitle = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold }; left.Children.Add(_baseListTitle); Grid.SetRow(_baseList, 1); left.Children.Add(_baseList);
-        var reorder = new WrapPanel { Children = { _top, _up, _down, _bottom, _sortAsc, _sortDesc } }; Grid.SetRow(reorder, 2); left.Children.Add(reorder);
+        var left = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto") };
+        _baseListTitle = new TextBlock { FontSize = 16, FontWeight = FontWeight.SemiBold }; left.Children.Add(_baseListTitle); var filters = new StackPanel { Spacing = 4, Children = { _baseFilter, _showHiddenBases } };
+        Grid.SetRow(filters, 1); left.Children.Add(filters); Grid.SetRow(_baseList, 2); left.Children.Add(_baseList);
+        var reorder = new WrapPanel { Children = { _top, _up, _down, _bottom, _sortAsc, _sortDesc } }; Grid.SetRow(reorder, 3); left.Children.Add(reorder);
         var nav = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, Children =
         {
             BaseUi.JsonButton(() => { if (SelectedBase is { } item) RequestGoTo($"PlayerStateData.PersistentPlayerBases[{item.DataIndex}]"); }),
             BaseUi.JsonButton(() => RequestGoTo("PlayerStateData.NPCWorkers"))
         }};
-        var body = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 10 }; body.Children.Add(left); Grid.SetColumn(_details, 1); body.Children.Add(_details);
+        var body = new Grid { ColumnSpacing = 6 }; body.ColumnDefinitions.Add(_baseColumn); body.ColumnDefinitions.Add(new ColumnDefinition(5, GridUnitType.Pixel)); body.ColumnDefinitions.Add(new ColumnDefinition(1, GridUnitType.Star));
+        var splitter = new GridSplitter { ResizeDirection = GridResizeDirection.Columns, HorizontalAlignment = HorizontalAlignment.Stretch };
+        splitter.PropertyChanged += (_, e) => { if (e.Property == BoundsProperty && _baseColumn.ActualWidth >= 230) { AppConfig.Instance.BaseListWidth = (int)_baseColumn.ActualWidth; } };
+        body.Children.Add(left); Grid.SetColumn(splitter, 1); body.Children.Add(splitter); Grid.SetColumn(_details, 2); body.Children.Add(_details);
         var root = new Grid { Margin = new Thickness(10), RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 7 }; root.Children.Add(nav); Grid.SetRow(body, 1); root.Children.Add(body); Grid.SetRow(_status, 2); root.Children.Add(_status);
         Content = root; ApplyUiLocalisation(); UpdateEnabled();
     }
@@ -135,22 +157,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
             _playerState = saveData.GetObject("PlayerStateData"); _baseItems.Clear(); _workers.Clear();
             JsonArray? workers = _playerState?.GetArray("NPCWorkers");
             if (workers != null) for (int i = 0; i < workers.Length && i < 5; i++) if (TryBool(workers.GetObject(i), "HiredWorker")) _workers.Add(new NpcWorkerItem(workers.GetObject(i), i));
-            JsonArray? bases = _playerState?.GetArray("PersistentPlayerBases");
-            if (bases != null) for (int i = 0; i < bases.Length; i++)
-            {
-                JsonObject value = bases.GetObject(i);
-                var kind = SpaceStationLogic.GetBaseKind(value);
-                bool isFreighter = kind == SpaceStationLogic.BaseKind.Freighter;
-                if (kind != SpaceStationLogic.BaseKind.Other && TryInt(value, "BaseVersion") >= 3)
-                {
-                    string name = isFreighter
-                        ? _playerState?.GetString("PlayerFreighterName") ?? UiStrings.Format("base.fallback_base_name", i + 1)
-                        : value.GetString("Name") ?? UiStrings.Format("base.fallback_base_name", i + 1);
-                    if (kind == SpaceStationLogic.BaseKind.Corvette && _playerState != null)
-                        name = SpaceStationLogic.ResolveCorvetteBaseName(_playerState, value) ?? name;
-                    _baseItems.Add(new BaseListItem(name, value, i, isFreighter));
-                }
-            }
+            RebuildBaseItems();
             _worker.SelectedIndex = _workers.Count > 0 ? 0 : -1; _baseList.SelectedIndex = _baseItems.Count > 0 ? 0 : -1;
             LoadSelectedWorker(); LoadSelectedBase();
         }
@@ -192,7 +199,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
         _loading = true;
         try
         {
-            JsonObject value = item.Data; _name.Text = item.IsShipNamed ? item.DisplayName : value.GetString("Name") ?? string.Empty; _name.IsReadOnly = item.IsShipNamed; _name.IsEnabled = !item.IsShipNamed; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
+            JsonObject value = item.Data; _name.Text = item.IsShipNamed ? item.DisplayName : value.GetString("Name") ?? string.Empty; _name.IsReadOnly = !item.NameEditable; _name.IsEnabled = item.NameEditable; JsonArray? objects = value.GetArray("Objects"); _itemCount.Text = (objects?.Length ?? 0).ToString(CultureInfo.CurrentCulture);
             ReadVector(value.GetArray("Position"), _position); ReadVector(value.GetArray("Forward"), _forward); _address.Text = Scalar(value.Get("GalacticAddress"));
             _galaxy.Text = Scalar(value.Get("Galaxy") ?? value.Get("RealityIndex")); _timestamp.Text = Scalar(value.Get("Timestamp")); _ownerTimestamp.Text = Scalar(value.GetObject("Owner")?.Get("TS")); _version.NumericValue = TryInt(value, "BaseVersion");
             var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -210,7 +217,7 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
     private void CommitSelectedBase(bool force = false)
     {
         if ((_loading && !force) || SelectedBase is not { } item) return; JsonObject value = item.Data;
-        string newName = _name.Text?.Trim() ?? string.Empty; if (!item.IsShipNamed && newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
+        string newName = _name.Text?.Trim() ?? string.Empty; if (item.NameEditable && newName.Length > 0) { value.Set("Name", newName); item.DisplayName = newName; }
         WriteVector(value.GetArray("Position"), _position); WriteVector(value.GetArray("Forward"), _forward); SetScalar(value, "GalacticAddress", _address.Text);
         string galaxyKey = value.Contains("Galaxy") ? "Galaxy" : "RealityIndex"; SetScalar(value, galaxyKey, _galaxy.Text); SetScalar(value, "Timestamp", _timestamp.Text);
         if (value.GetObject("Owner") is { } owner) SetScalar(owner, "TS", _ownerTimestamp.Text); _version.TryCommit(); RawNumberGuard.SetInt(value, "BaseVersion", (int)(_version.NumericValue ?? 0));
@@ -232,39 +239,31 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
 
     private void MoveSelected(int delta)
     {
-        if (SelectedBase is not { } selected || _playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
-        List<BaseListItem> ordered = _baseItems.OrderBy(item => item.DataIndex).ToList(); int position = ordered.IndexOf(selected); int destination = delta == int.MinValue ? 0 : delta == int.MaxValue ? ordered.Count - 1 : position + delta;
-        if (destination < 0 || destination >= ordered.Count || destination == position) return;
-        int step = destination > position ? 1 : -1;
-        while (position != destination)
-        {
-            BaseListItem neighbor = ordered[position + step]; BaseLogic.SwapPlayerBases(bases, selected.DataIndex, neighbor.DataIndex); (selected.DataIndex, neighbor.DataIndex) = (neighbor.DataIndex, selected.DataIndex);
-            ordered[position] = neighbor; ordered[position + step] = selected; position += step;
-        }
-        RefreshBaseList(selected); RaiseModified();
+        if (_playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
+        int[] indices = _baseList.SelectedItems!.OfType<BaseListItem>().Select(item => item.DataIndex).Order().ToArray();
+        if (indices.Length == 0) return;
+        int target = delta == int.MinValue ? 0 : delta == int.MaxValue ? bases.Length : delta < 0 ? Math.Max(0, indices[0] - 1) : Math.Min(bases.Length, indices[^1] + 2);
+        var moved = BaseListLogic.MoveBlock(bases, indices, target);
+        RebuildBaseItems(moved); RaiseModified();
     }
 
     private void SortBases(bool ascending)
     {
-        if (_playerState?.GetArray("PersistentPlayerBases") is not { } bases || _baseItems.Count < 2) return; BaseListItem? selected = SelectedBase;
-        List<int> slots = _baseItems.Select(item => item.DataIndex).Order().ToList(); List<BaseListItem> desired = ascending
-            ? _baseItems.OrderBy(item => item.DisplayName, StringComparer.OrdinalIgnoreCase).ToList()
-            : _baseItems.OrderByDescending(item => item.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
-        for (int position = 0; position < desired.Count; position++)
-        {
-            BaseListItem item = desired[position]; int target = slots[position]; if (item.DataIndex == target) continue;
-            BaseListItem other = _baseItems.First(value => value.DataIndex == target); BaseLogic.SwapPlayerBases(bases, item.DataIndex, target); (item.DataIndex, other.DataIndex) = (other.DataIndex, item.DataIndex);
-        }
-        RefreshBaseList(selected); RaiseModified();
+        if (_playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
+        JsonObject? selected = SelectedBase?.Data;
+        BaseListLogic.SortByName(_playerState, bases, !ascending);
+        int index = Enumerable.Range(0, bases.Length).FirstOrDefault(i => ReferenceEquals(bases.Get(i), selected), -1);
+        RebuildBaseItems([index]); RaiseModified();
     }
 
     private async Task DeleteBaseAsync()
     {
-        if (SelectedBase is not { } selected || _playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
-        string confirmKey = selected.IsFreighterBase ? "base.delete_freighter_base_confirm" : "base.delete_base_confirm";
-        if (!await ConfirmOperationAsync(UiStrings.Get("base.delete_base_title"), UiStrings.Format(confirmKey, selected.DisplayName))) return;
-        bases.RemoveAt(selected.DataIndex); _baseItems.Remove(selected); foreach (BaseListItem item in _baseItems) if (item.DataIndex > selected.DataIndex) item.DataIndex--;
-        _baseList.SelectedIndex = _baseItems.Count > 0 ? 0 : -1; LoadSelectedBase(); RaiseModified();
+        if (_playerState?.GetArray("PersistentPlayerBases") is not { } bases) return;
+        var selected = _baseList.SelectedItems!.OfType<BaseListItem>().OrderByDescending(item => item.DataIndex).ToArray();
+        if (selected.Length == 0) return;
+        if (!await ConfirmOperationAsync(UiStrings.Get("base.delete_base_title"), string.Join("\n", selected.Select(item => UiStrings.Format(item.IsFreighterBase ? "base.delete_freighter_base_confirm" : "base.delete_base_confirm", item.DisplayName))))) return;
+        foreach (var item in selected) bases.RemoveAt(item.DataIndex);
+        RebuildBaseItems(); RaiseModified();
     }
 
     private async Task MoveBaseComputerAsync()
@@ -280,23 +279,60 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
 
     private async Task ExportBaseAsync()
     {
-        if (SelectedBase is not { } item || ExportAsync == null) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Get("common.error")); return; }
-        string extension = ExportConfig.Instance.BaseExt; string file = ExportConfig.BuildFileName(ExportConfig.Instance.BaseTemplate, extension, new Dictionary<string, string> { ["base_name"] = item.DisplayName });
-        await ExportAsync(new BasesStorageTransferRequest(BasesStorageTransferKind.Base, UiStrings.Get("base.export_title"), file, [extension], $"PlayerStateData.PersistentPlayerBases[{item.DataIndex}]"), item.Data.ToDisplayString(), CancellationToken.None);
+        if (SelectedBase is not { } item || ExportAsync == null) return;
+        CommitSelectedBase();
+        string extension = ExportConfig.Instance.BaseExt;
+        string file = ExportConfig.BuildFileName(ExportConfig.Instance.BaseTemplate, extension, new Dictionary<string, string> { ["base_name"] = item.DisplayName });
+        try
+        {
+            if (await ExportAsync(new BasesStorageTransferRequest(BasesStorageTransferKind.Base, UiStrings.Get("base.export_title"), file, [extension], $"PlayerStateData.PersistentPlayerBases[{item.DataIndex}]", _playerState), item.Data.ToDisplayString(), CancellationToken.None))
+                _status.Text = UiStrings.Get("base.export_success");
+        }
+        catch (Exception ex) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Format("base.export_failed", ex.Message)); }
     }
 
     private async Task ImportBaseAsync(bool overwrite)
     {
-        if (SelectedBase is not { } item || ImportAsync == null) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Get("common.error")); return; }
-        string extension = ExportConfig.Instance.BaseExt; BasesStorageTransferContent? content = await ImportAsync(new BasesStorageTransferRequest(BasesStorageTransferKind.Base, UiStrings.Get("base.import_title"), "base" + extension, [extension], $"PlayerStateData.PersistentPlayerBases[{item.DataIndex}]"), CancellationToken.None); if (content == null) return;
-        if (!await ConfirmOperationAsync(UiStrings.Get("base.confirm_import_title"), UiStrings.Get("base.import_confirm"))) return;
+        if (_playerState == null || ImportAsync == null || overwrite && SelectedBase == null) return;
+        var item = SelectedBase;
+        string extension = ExportConfig.Instance.BaseExt;
         try
         {
-            JsonObject imported = JsonObject.Parse(content.JsonText); string[] keys = overwrite ? imported.Names().ToArray() : ["Objects", "BaseVersion", "UserData"];
-            foreach (string key in keys) if (imported.Contains(key)) item.Data.Set(key, imported.Get(key) is JsonObject obj ? obj.DeepClone() : imported.Get(key) is JsonArray array ? array.DeepClone() : imported.Get(key));
-            LoadSelectedBase(); RaiseModified(); await ShowMessageAsync(UiStrings.Get("base.import_title"), UiStrings.Get("base.import_success"));
+            var content = await ImportAsync(new BasesStorageTransferRequest(BasesStorageTransferKind.Base, UiStrings.Get("base.import_title"), "base" + extension, [extension, ".json"], "PlayerStateData.PersistentPlayerBases"), CancellationToken.None);
+            if (content == null) return;
+            if (content.InvalidTerrain) throw new InvalidDataException(UiStrings.Get("base.import_terrain_invalid"));
+            var read = BaseExportLogic.ReadExport(JsonObject.Parse(content.JsonText));
+            if (read.Payload is not { } raw || !BaseExportLogic.IsSupportedKind(raw.Base)) throw new InvalidDataException(UiStrings.Get("base.import_invalid_file"));
+            var payload = new BaseExportLogic.ExportPayload(raw.Base, content.TerrainEditData);
+            if (overwrite && !BaseExportLogic.IsSameType(item!.Data, payload.Base))
+                throw new InvalidDataException(UiStrings.Format("base.import_type_mismatch", BaseListLogic.GetTypeName(payload.Base), BaseListLogic.GetTypeName(item.Data)));
+            int target = overwrite ? item!.DataIndex : -1;
+            if (BaseExportLogic.HasMetadataMismatch(_playerState, payload.Base, target) && !await ConfirmOperationAsync(UiStrings.Get("base.import_title"), UiStrings.Get("base.import_metadata_warning"))) return;
+            if (BaseExportLogic.HasTerrainConflict(_playerState, payload, target) && !await ConfirmOperationAsync(UiStrings.Get("base.import_title"), UiStrings.Get("base.import_terrain_warning"))) return;
+            string message = overwrite ? UiStrings.Get("base.import_confirm") : UiStrings.Format("base.import_new_confirm", BaseListLogic.GetTypeName(payload.Base), BaseExportLogic.GetDisplayName(payload.Base));
+            if (!await ConfirmOperationAsync(UiStrings.Get("base.confirm_import_title"), message)) return;
+            var result = overwrite ? BaseExportLogic.ReplaceBase(_playerState, target, payload) : BaseExportLogic.ImportAsNew(_playerState, payload);
+            RebuildBaseItems([result.BaseIndex]); RaiseModified();
+            _status.Text = UiStrings.Get("base.import_success");
         }
         catch (Exception ex) { await ShowMessageAsync(UiStrings.Get("common.error"), UiStrings.Format("base.import_failed", ex.Message)); }
+    }
+
+    private void RebuildBaseItems(int[]? selectedIndices = null)
+    {
+        if (_playerState == null) return;
+        selectedIndices ??= _baseList.SelectedItems!.OfType<BaseListItem>().Select(item => item.DataIndex).ToArray();
+        bool old = _loading; _loading = true;
+        try
+        {
+            _baseItems.Clear();
+            foreach (var row in BaseListLogic.BuildRows(_playerState, _playerState.GetArray("PersistentPlayerBases"), _baseFilter.Text, _showHiddenBases.IsChecked == true, BaseKindLabel))
+                if (row.Data != null) _baseItems.Add(new BaseListItem(string.IsNullOrWhiteSpace(row.Name) ? UiStrings.Format("base.fallback_base_name", row.DataIndex + 1) : row.Name, row.Data, row.DataIndex, row.Kind == BaseListLogic.BaseListKind.Freighter));
+            foreach (var entry in _baseItems.Where(item => selectedIndices.Contains(item.DataIndex))) _baseList.SelectedItems!.Add(entry);
+            if (_baseList.SelectedItems!.Count == 0 && _baseItems.Count > 0) _baseList.SelectedIndex = 0;
+        }
+        finally { _loading = old; }
+        if (!old) LoadSelectedBase();
     }
 
     private async Task ClearTerrainAsync(int scope)
@@ -318,7 +354,8 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
     private void UpdateEnabled()
     {
         bool hasBase = SelectedBase != null; bool isFreighter = SelectedBase?.IsPlanetary != true; bool hasWorker = _worker.SelectedItem is NpcWorkerItem; _summon.IsEnabled = hasBase && hasWorker;
-        foreach (Button button in new[] { _export, _import, _overwrite, _delete }) button.IsEnabled = hasBase;
+        foreach (Button button in new[] { _export, _overwrite, _delete }) button.IsEnabled = hasBase;
+        _import.IsEnabled = _playerState != null;
         _clearTerrain.IsEnabled = hasBase && !isFreighter;
         _moveComputer.IsEnabled = hasBase && !isFreighter && _objectList.SelectedItem is BaseObjectItem { ObjectId: not "^BASE_FLAG" };
         List<BaseListItem> ordered = _baseItems.OrderBy(item => item.DataIndex).ToList(); int index = SelectedBase == null ? -1 : ordered.IndexOf(SelectedBase); _top.IsEnabled = _up.IsEnabled = index > 0; _down.IsEnabled = _bottom.IsEnabled = index >= 0 && index < ordered.Count - 1; _sortAsc.IsEnabled = _sortDesc.IsEnabled = ordered.Count > 1;
@@ -330,10 +367,11 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
         bool old = _loading; _loading = true;
         try
         {
+            _baseFilter.PlaceholderText = UiStrings.Get("base.filter_placeholder"); _showHiddenBases.Content = UiStrings.Get("base.filter_show_hidden");
             _baseListTitle.Text = UiStrings.Get("base.base_list_title"); _npcHeader.Text = UiStrings.Get("base.npc_header"); _baseHeader.Text = UiStrings.Get("base.base_header");
             _labels[0].Text = UiStrings.Get("base.npc_label"); _labels[1].Text = UiStrings.Get("base.npc_race_label"); _labels[2].Text = UiStrings.Get("base.npc_seed_label"); _labels[3].Text = UiStrings.Get("base.name_label"); _labels[4].Text = UiStrings.Get("base.items_label");
             _labels[5].Text = UiStrings.Get("base.obj_position"); _labels[6].Text = UiStrings.Get("base.obj_forward"); _labels[7].Text = UiStrings.Get("base.obj_galactic_address"); _labels[11].Text = UiStrings.Get("base.obj_base_version");
-            _generateNpcSeed.Content = UiStrings.Get("common.generate"); _summon.Content = UiStrings.Get("base.summon_npc"); _export.Content = UiStrings.Get("base.export"); _import.Content = UiStrings.Get("base.import"); _overwrite.Content = UiStrings.Get("base.confirm_import_title");
+            _generateNpcSeed.Content = UiStrings.Get("common.generate"); _summon.Content = UiStrings.Get("base.summon_npc"); _export.Content = UiStrings.Get("base.export"); _import.Content = UiStrings.Get("base.import_new"); _overwrite.Content = UiStrings.Get("base.confirm_import_title");
             _moveComputer.Content = UiStrings.Get("base.move_basecomp"); _delete.Content = UiStrings.Get("base.delete_base"); _top.Content = UiStrings.Get("base.move_base_to_top"); _up.Content = UiStrings.Get("base.move_base_up"); _down.Content = UiStrings.Get("base.move_base_down"); _bottom.Content = UiStrings.Get("base.move_base_to_bottom");
             _sortAsc.Content = UiStrings.Get("base.sort_az"); _sortDesc.Content = UiStrings.Get("base.sort_za"); _clearTerrain.Content = UiStrings.Get("base.clear_terrain"); _clearAllTerrain.Content = UiStrings.Get("base.clear_all_terrain"); _clearOutsideBases.Content = UiStrings.Get("base.clear_all_terrain_except_bases");
             string? race = (_race.SelectedItem as NpcRaceItem)?.InternalName; _race.ItemsSource = BaseNpcRaces.Items(); _race.SelectedItem = _race.Items.Cast<object?>().OfType<NpcRaceItem>().FirstOrDefault(value => value.InternalName == race);
@@ -343,6 +381,18 @@ public sealed partial class BasesEditorPanel : UserControl, ISaveEditorPanel, IG
         }
         finally { _loading = old; }
     }
+
+    private static string BaseKindLabel(BaseListLogic.BaseListKind kind) => UiStrings.Get(kind switch
+    {
+        BaseListLogic.BaseListKind.Home => "base.kind_home",
+        BaseListLogic.BaseListKind.Freighter => "base.kind_freighter",
+        BaseListLogic.BaseListKind.SpaceStation => "base.kind_station",
+        BaseListLogic.BaseListKind.Corvette => "base.kind_corvette",
+        BaseListLogic.BaseListKind.SpaceBase => "base.kind_space",
+        BaseListLogic.BaseListKind.TemporaryShip => "base.kind_temporary",
+        BaseListLogic.BaseListKind.Legacy => "base.kind_legacy",
+        _ => "base.kind_other"
+    });
 
     private static string NewSeed() { Span<byte> bytes = stackalloc byte[8]; System.Security.Cryptography.RandomNumberGenerator.Fill(bytes); return "0x" + Convert.ToHexString(bytes); }
     private static void ReadVector(JsonArray? array, InvariantNumericTextBox[] fields) { for (int i = 0; i < fields.Length; i++) fields[i].NumericValue = array != null && i < array.Length ? array.GetDouble(i) : 0; }

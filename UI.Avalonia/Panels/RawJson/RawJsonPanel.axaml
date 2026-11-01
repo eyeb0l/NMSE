@@ -3,7 +3,7 @@
              xmlns:raw="using:NMSE.UI.Avalonia.Panels.RawJson"
              x:Class="NMSE.UI.Avalonia.Panels.RawJson.RawJsonPanel"
              x:CompileBindings="True">
-  <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="6">
+  <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="6">
     <TextBlock x:Name="TitleText" Grid.Row="0" Text="Raw JSON Editor"
                FontSize="20" FontWeight="SemiBold" />
 
@@ -40,9 +40,16 @@
       </StackPanel>
     </ScrollViewer>
 
-    <StackPanel x:Name="BreadcrumbPanel" Grid.Row="3" Orientation="Horizontal" Spacing="3" />
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
+      <TextBlock x:Name="BookmarksLabel" VerticalAlignment="Center" />
+      <ComboBox x:Name="BookmarkSelector" Width="300" SelectionChanged="OnBookmarkSelected" />
+      <Button x:Name="AddBookmarkButton" Click="OnAddBookmark" />
+      <Button x:Name="ManageBookmarksButton" Click="OnManageBookmarks" />
+    </StackPanel>
 
-    <Grid Grid.Row="4">
+    <StackPanel x:Name="BreadcrumbPanel" Grid.Row="4" Orientation="Horizontal" Spacing="3" />
+
+    <Grid Grid.Row="5">
       <TreeView x:Name="Tree" SelectionChanged="OnTreeSelectionChanged"
                 KeyDown="OnTreeKeyDown" DoubleTapped="OnTreeDoubleTapped"
                 PointerPressed="OnTreePointerPressed"
@@ -138,7 +145,7 @@
       </Grid>
     </Grid>
 
-    <Border Grid.Row="5" Padding="8,5" CornerRadius="4"
+    <Border Grid.Row="6" Padding="8,5" CornerRadius="4"
             Background="{DynamicResource ThemeControlLowBrush}">
       <TextBlock x:Name="StatusText" />
     </Border>

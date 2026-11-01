@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Selection;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -27,6 +28,16 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
 
     private readonly CompanionDesktopActions _desktop;
     private readonly ObservableCollection<CompanionSlot> _entries = [];
+    private readonly ObservableCollection<CompanionSlot> _petEntries = [];
+    private readonly ObservableCollection<CompanionSlot> _eggEntries = [];
+    private readonly ListBox _eggList = new() { MinWidth = 230, SelectionMode = SelectionMode.Multiple };
+    private readonly CheckBox _showLockedSlots = new() { IsChecked = AppConfig.Instance.CompanionShowLockedSlots };
+    private readonly TextBlock _petSummary = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _eggSummary = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Button _unlockSlot = new();
+    private readonly TextBlock _lockedHint = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly List<(Button Button, string Key)> _listButtons = [];
+    private bool _activeIsPet = true;
     private readonly Random _random = new();
     private readonly Dictionary<string, TextBlock> _labels = new(StringComparer.Ordinal);
     private readonly List<Button> _seedButtons = [];
@@ -131,8 +142,21 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
             FontWeight = FontWeight.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        _companionList = new ListBox { ItemsSource = _entries, MinWidth = 230 };
-        _companionList.SelectionChanged += (_, _) => LoadSelectedCompanion();
+        _companionList = new ListBox { ItemsSource = _petEntries, MinWidth = 230, SelectionMode = SelectionMode.Multiple };
+        _eggList.ItemsSource = _eggEntries;
+        _companionList.SelectionChanged += (_, e) => SelectList(true, e);
+        _eggList.SelectionChanged += (_, e) => SelectList(false, e);
+        _showLockedSlots.IsCheckedChanged += (_, _) =>
+        {
+            AppConfig.Instance.CompanionShowLockedSlots = _showLockedSlots.IsChecked == true;
+            AppConfig.Instance.Save(); RebuildSlotLabels(); LoadSelectedCompanion();
+        };
+        _unlockSlot.Click += (_, _) =>
+        {
+            if (_playerState == null || SelectedEntry is not { Source: "Pet" } entry) return;
+            CompanionLogic.SetSlotUnlocked(_playerState, entry.OriginalIndex, true);
+            RebuildSlotLabels(); LoadBattleTeam(); LoadSelectedCompanion(); Modified();
+        };
         _deleteButton = ActionButton(OnDeleteAsync);
         _importButton = ActionButton(OnImportAsync);
         _exportButton = ActionButton(OnExportAsync);
@@ -180,11 +204,11 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
         };
         var left = new Grid
         {
-            RowDefinitions = new RowDefinitions("*,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto,Auto,*,Auto,Auto,Auto"),
             RowSpacing = 6,
-            Children = { _companionList, listActions },
+            Children = { _petSummary, _showLockedSlots, _companionList, BuildListActions(true), _eggSummary, _eggList, BuildListActions(false), listActions, new StackPanel { Children = { _lockedHint, _unlockSlot } } },
         };
-        Grid.SetRow(listActions, 1);
+        for (int i = 0; i < left.Children.Count; i++) Grid.SetRow(left.Children[i], i);
         var body = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("240,*"),
@@ -212,6 +236,7 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
     public event EventHandler<CompanionExosuitCargoModifiedEventArgs>? ExosuitCargoModified;
 
     public ListBox CompanionList => _companionList;
+    public ListBox EggList => _eggList;
     public TabControl EditorTabs => _tabs;
     public TabItem StatsTab => _statsTab;
     public TabItem BattleTab => _battleTab;
@@ -665,21 +690,21 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
         _loading = true;
         try
         {
-            _entries.Clear();
+            _entries.Clear(); _petEntries.Clear(); _eggEntries.Clear();
             _details.IsVisible = false;
             if (_playerState is null) return;
             AddSlots(_playerState.GetArray("Pets"), "Pet");
             AddSlots(_playerState.GetArray("Eggs"), "Egg");
             LoadBattleTeam();
-            if (_entries.Count > 0)
-                _companionList.SelectedIndex = 0;
+            _activeIsPet = _petEntries.Count > 0;
+            if (_activeIsPet) _companionList.SelectedIndex = 0;
+            else if (_eggEntries.Count > 0) _eggList.SelectedIndex = 0;
         }
         finally
         {
             _loading = false;
         }
-        if (_companionList.SelectedIndex >= 0)
-            LoadSelectedCompanion();
+        LoadSelectedCompanion();
     }
 
     public void SaveData(JsonObject saveData)
@@ -693,6 +718,9 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
     public void ApplyUiLocalisation()
     {
         _title.Text = UiStrings.Get("companion.title");
+        _showLockedSlots.Content = UiStrings.Get("companion.show_locked_slots");
+        _unlockSlot.Content = UiStrings.Get("companion.slot_unlocked");
+        foreach (var (button, key) in _listButtons) button.Content = UiStrings.Get(key);
         _statsTab.Header = Get("companion.tab_stats", "Stats");
         _battleTab.Header = Get("companion.tab_battle", "Battle");
         Set("slot_unlocked", "companion.slot_unlocked", "Slot Unlocked:");
@@ -777,10 +805,7 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
     private void RefreshDynamicLocalisation()
     {
         if (_playerState is null) return;
-        int selected = _companionList.SelectedIndex;
-        RebuildSlotLabels();
-        _companionList.SelectedIndex = selected;
-        if (selected >= 0) LoadSelectedCompanion();
+        RebuildSlotLabels(); LoadSelectedCompanion();
     }
 
     private void AddSlots(JsonArray? array, string source)
@@ -798,37 +823,85 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
 
     private void RebuildSlotLabels()
     {
-        for (int index = 0; index < _entries.Count; index++)
-        {
-            CompanionSlot entry = _entries[index];
-            bool empty = !IsOccupied(entry.Companion);
-            bool locked = entry.Source == "Pet" && !IsUnlocked(entry.OriginalIndex);
-            string label;
-            if (empty)
-                label = $"{entry.Source} {entry.OriginalIndex} ({(locked ? Get("common.locked", "Locked") : Get("common.empty", "Empty"))})";
-            else
-            {
-                string name = entry.Companion.GetString("CustomName") ?? string.Empty;
-                label = string.IsNullOrEmpty(name) || name == "^"
-                    ? $"{entry.Source} {entry.OriginalIndex}"
-                    : $"{entry.Source} {entry.OriginalIndex} - {name}";
-            }
-            _entries[index] = entry with { IsEmpty = empty, Label = label };
-        }
-    }
-
-    private CompanionSlot? SelectedEntry => _companionList.SelectedIndex is int index && index >= 0 && index < _entries.Count
-        ? _entries[index] : null;
-    private JsonObject? SelectedCompanion => SelectedEntry?.Companion;
-
-    private static bool IsOccupied(JsonObject companion)
-    {
+        var selected = (_activeIsPet ? _companionList : _eggList).SelectedItems!.OfType<CompanionSlot>().Select(item => (item.Source, item.OriginalIndex)).ToHashSet();
+        bool old = _loading; _loading = true;
         try
         {
-            JsonArray? seed = companion.GetArray("CreatureSeed");
-            return seed is { Length: >= 2 } && seed.GetBool(0);
+            _petEntries.Clear(); _eggEntries.Clear();
+            for (int index = 0; index < _entries.Count; index++)
+            {
+                var entry = _entries[index];
+                bool empty = !IsOccupied(entry.Companion);
+                bool locked = entry.Source == "Pet" && !IsUnlocked(entry.OriginalIndex);
+                string source = UiStrings.Get(entry.Source == "Pet" ? "companion.slot_pet" : "companion.slot_egg");
+                string name = entry.Companion.GetString("CustomName") ?? "";
+                string label = empty
+                    ? UiStrings.Format("companion.slot_label_state", source, entry.OriginalIndex, UiStrings.Get(locked ? "common.locked" : "common.empty"))
+                    : UiStrings.Format("companion.slot_label_named", source, entry.OriginalIndex, name.TrimStart('^'));
+                if (locked && !empty) label += " (" + UiStrings.Get("common.locked") + ")";
+                var updated = entry with { IsEmpty = empty, Label = label };
+                _entries[index] = updated;
+                if (entry.Source == "Egg") _eggEntries.Add(updated);
+                else if (!locked || !empty || _showLockedSlots.IsChecked == true) _petEntries.Add(updated);
+            }
+            var active = _activeIsPet ? _companionList : _eggList;
+            foreach (var item in active.Items.OfType<CompanionSlot>().Where(item => selected.Contains((item.Source, item.OriginalIndex)))) active.SelectedItems!.Add(item);
+            if (active.SelectedItem == null && active.ItemCount > 0) active.SelectedIndex = 0;
+            var pets = _playerState?.GetArray("Pets"); var eggs = _playerState?.GetArray("Eggs");
+            int used = _entries.Count(item => item.Source == "Pet" && !item.IsEmpty);
+            int unlocked = pets == null ? 0 : Enumerable.Range(0, pets.Length).Count(IsUnlocked);
+            _petSummary.Text = UiStrings.Format("companion.pets_summary", used, unlocked, pets?.Length ?? 0);
+            _eggSummary.Text = UiStrings.Format("companion.eggs_summary", _eggEntries.Count(item => !item.IsEmpty), eggs?.Length ?? 0);
         }
-        catch { return false; }
+        finally { _loading = old; }
+    }
+
+    private CompanionSlot? SelectedEntry => (_activeIsPet ? _companionList : _eggList).SelectedItem as CompanionSlot;
+    private JsonObject? SelectedCompanion => SelectedEntry?.Companion;
+    private static bool IsOccupied(JsonObject companion) => CompanionLogic.IsSlotOccupied(companion);
+
+    private void SelectList(bool pets, SelectionChangedEventArgs e)
+    {
+        if (_loading || e.AddedItems.Count == 0) return;
+        _loading = true;
+        try { _activeIsPet = pets; (pets ? _eggList : _companionList).SelectedItems!.Clear(); }
+        finally { _loading = false; }
+        LoadSelectedCompanion();
+    }
+
+    private Control BuildListActions(bool pets)
+    {
+        var actions = new WrapPanel();
+        foreach (var (key, operation) in new (string, Action)[]
+        {
+            ("companion.sort_az", () => ReorderList(pets, false, 0)),
+            ("companion.sort_za", () => ReorderList(pets, true, 0)),
+            ("companion.move_up", () => ReorderList(pets, false, -1)),
+            ("companion.move_down", () => ReorderList(pets, false, 1))
+        })
+        {
+            var button = new Button(); button.Click += (_, _) => operation();
+            _listButtons.Add((button, key)); actions.Children.Add(button);
+        }
+        return actions;
+    }
+
+    private void ReorderList(bool pets, bool descending, int direction)
+    {
+        if (_playerState == null || _saveData == null) return;
+        CommitCurrentEditor();
+        var selected = (pets ? _companionList : _eggList).SelectedItems!.OfType<CompanionSlot>().ToArray();
+        var indices = selected.Select(item => item.OriginalIndex).Order().ToArray();
+        var eggs = _playerState.GetArray("Eggs");
+        bool changed = direction == 0
+            ? pets ? CompanionSortLogic.SortPets(_playerState, descending) : eggs != null && CompanionSortLogic.SortEggs(eggs, descending)
+            : pets ? CompanionSortLogic.MovePets(_playerState, indices, direction) : eggs != null && CompanionSortLogic.MoveEggs(eggs, indices, direction);
+        if (!changed) return;
+        LoadData(_saveData); _activeIsPet = pets;
+        var list = pets ? _companionList : _eggList;
+        list.SelectedItems!.Clear();
+        foreach (var item in list.Items.OfType<CompanionSlot>().Where(item => selected.Any(before => ReferenceEquals(before.Companion, item.Companion)))) list.SelectedItems.Add(item);
+        LoadSelectedCompanion(); Modified();
     }
 
     private bool IsUnlocked(int index)
@@ -846,7 +919,8 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
         CompanionSlot? entry = SelectedEntry;
         if (entry is null)
         {
-            _details.IsVisible = false;
+            _details.IsVisible = false; _unlockSlot.IsVisible = _lockedHint.IsVisible = false;
+            _deleteButton.IsEnabled = _exportButton.IsEnabled = false;
             return;
         }
         _loading = true;
@@ -854,7 +928,12 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
         {
             JsonObject companion = entry.Companion;
             _details.IsVisible = true;
-            _deleteButton.IsEnabled = !entry.IsEmpty;
+            bool locked = entry.Source == "Pet" && !IsUnlocked(entry.OriginalIndex);
+            _details.IsEnabled = !locked;
+            _unlockSlot.IsVisible = locked;
+            _lockedHint.IsVisible = locked;
+            _lockedHint.Text = UiStrings.Get(entry.IsEmpty ? "companion.locked_unlock_hint" : "companion.pet_locked_warning");
+            _deleteButton.IsEnabled = _exportButton.IsEnabled = !entry.IsEmpty;
             SelectCreature(companion.GetString("CreatureID") ?? string.Empty);
             _name.Text = companion.GetString("CustomName") ?? string.Empty;
             SetSeedText(_creatureSeed, companion, "CreatureSeed");
@@ -992,7 +1071,7 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
 
     private void CommitCurrentEditor()
     {
-        if (SelectedCompanion is null) return;
+        if (SelectedEntry is not { IsEmpty: false } entry || entry.Source == "Pet" && !IsUnlocked(entry.OriginalIndex)) return;
         WriteName();
         WriteCreatureSeed();
         WriteSecondarySeed();
@@ -1015,7 +1094,7 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
     private void ActivateSelected()
     {
         CompanionSlot? entry = SelectedEntry;
-        if (entry is null || !entry.IsEmpty) return;
+        if (entry is null || !entry.IsEmpty || entry.Source == "Pet" && !IsUnlocked(entry.OriginalIndex)) return;
         JsonArray? seed = entry.Companion.GetArray("CreatureSeed");
         if (seed is { Length: >= 2 }) seed.Set(0, true);
         RebuildSlotLabels();
@@ -1078,7 +1157,7 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
     {
         if (_loading || _playerState is null || SelectedEntry is not { Source: "Pet" } entry) return;
         CompanionLogic.SetSlotUnlocked(_playerState, entry.OriginalIndex, _unlocked.IsChecked == true);
-        RebuildSlotLabels();
+        RebuildSlotLabels(); LoadBattleTeam(); LoadSelectedCompanion();
         Modified();
     }
 
@@ -1695,15 +1774,17 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
 
     private async Task OnDeleteAsync()
     {
-        if (SelectedEntry is not { IsEmpty: false } entry) return;
-        if (!await _desktop.ConfirmAsync(Get("companion.delete_title", "Delete Companion"), UiStrings.Get("companion.delete_confirm"))) return;
-        CompanionLogic.DeleteCompanion(entry.Companion);
-        if (entry.Source == "Pet" && _playerState is not null)
-            CompanionLogic.SetSlotUnlocked(_playerState, entry.OriginalIndex, false);
-        RebuildSlotLabels();
-        LoadBattleTeam();
-        LoadSelectedCompanion();
-        Modified();
+        var selected = (_activeIsPet ? _companionList : _eggList).SelectedItems!.OfType<CompanionSlot>().Where(item => !item.IsEmpty).ToArray();
+        if (selected.Length == 0) return;
+        string message = selected.Length > 1 ? UiStrings.Format("companion.delete_multi_confirm", selected.Length) : UiStrings.Get("companion.delete_confirm");
+        if (!await _desktop.ConfirmAsync(Get("companion.delete_title", "Delete Companion"), message)) return;
+        foreach (var entry in selected)
+        {
+            CompanionLogic.DeleteCompanion(entry.Companion);
+            if (entry.Source == "Pet" && _playerState != null)
+                CompanionLogic.SetSlotUnlocked(_playerState, entry.OriginalIndex, false);
+        }
+        RebuildSlotLabels(); LoadBattleTeam(); LoadSelectedCompanion(); Modified();
     }
 
     private async Task OnExportAsync()
@@ -1747,22 +1828,26 @@ public sealed partial class CompanionPanel : UserControl, ISaveEditorPanel, IGoT
             JsonArray? accessories = _playerState.GetArray("PetAccessoryCustomisation");
             int imported;
             bool isPet;
+            var targetArray = _activeIsPet ? pets : eggs;
+            var fallbackArray = _activeIsPet ? eggs : pets;
             try
             {
-                if (pets is null) throw new InvalidOperationException();
-                imported = CompanionLogic.ImportCompanion(pets, path, accessories);
-                isPet = true;
+                if (targetArray == null) throw new InvalidOperationException();
+                imported = CompanionLogic.ImportCompanion(targetArray, path, ReferenceEquals(targetArray, pets) ? accessories : null);
+                isPet = ReferenceEquals(targetArray, pets);
             }
             catch (InvalidOperationException)
             {
-                if (eggs is null) throw new InvalidOperationException("No empty companion slot available.");
-                imported = CompanionLogic.ImportCompanion(eggs, path, accessories);
-                isPet = false;
+                if (fallbackArray == null) throw new InvalidOperationException("No empty companion slot available.");
+                imported = CompanionLogic.ImportCompanion(fallbackArray, path, ReferenceEquals(fallbackArray, pets) ? accessories : null);
+                isPet = ReferenceEquals(fallbackArray, pets);
             }
             if (isPet) CompanionLogic.SetSlotUnlocked(_playerState, imported, true);
             LoadData(_saveData!);
-            int target = _entries.ToList().FindIndex(item => item.Source == (isPet ? "Pet" : "Egg") && item.OriginalIndex == imported);
-            if (target >= 0) _companionList.SelectedIndex = target;
+            _activeIsPet = isPet;
+            var list = isPet ? _companionList : _eggList;
+            list.SelectedItem = list.Items.OfType<CompanionSlot>().FirstOrDefault(item => item.OriginalIndex == imported);
+            LoadSelectedCompanion();
             Modified();
         }
         catch (Exception exception)

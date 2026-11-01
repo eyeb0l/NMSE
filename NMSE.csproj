@@ -49,4 +49,20 @@
     <Content Include="Resources\ui\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Keep assembly metadata aligned with the package version on local builds too. -->
+  <Target Name="ReadNmseVersion" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+    <PropertyGroup>
+      <_VersionJson>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/version.json'))</_VersionJson>
+      <_Major>$([System.Text.RegularExpressions.Regex]::Match('$(_VersionJson)', '&quot;major&quot;\s*:\s*(\d+)').Groups[1].Value)</_Major>
+      <_Minor>$([System.Text.RegularExpressions.Regex]::Match('$(_VersionJson)', '&quot;minor&quot;\s*:\s*(\d+)').Groups[1].Value)</_Minor>
+      <_Patch>$([System.Text.RegularExpressions.Regex]::Match('$(_VersionJson)', '&quot;patch&quot;\s*:\s*(\d+)').Groups[1].Value)</_Patch>
+      <Version>$(_Major).$(_Minor).$(_Patch)</Version>
+      <AssemblyVersion>$(Version).0</AssemblyVersion>
+      <FileVersion>$(Version).0</FileVersion>
+      <InformationalVersion>$(Version)</InformationalVersion>
+      <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+      <Product>NMSE</Product>
+      <Company>NMSE</Company>
+    </PropertyGroup>
+  </Target>
 </Project>

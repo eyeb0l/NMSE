@@ -1530,26 +1530,27 @@ public sealed partial class MainWindow : Window
     }
 
     private async Task<BasesStorageTransferContent?> ImportBasesStorageAsync(
-        BasesStorageTransferRequest request,
-        CancellationToken cancellationToken)
+        BasesStorageTransferRequest request, CancellationToken cancellationToken)
     {
         string? path = await PickOpenFileAsync(request.Title, request.Extensions);
-        if (path is null)
-            return null;
-        return new BasesStorageTransferContent(
-            Path.GetFileName(path),
-            await File.ReadAllTextAsync(path, cancellationToken));
+        if (path is null) return null;
+        if (request.Kind == BasesStorageTransferKind.Base) path = BaseExportLogic.ResolveBaseFilePath(path);
+        string json = await File.ReadAllTextAsync(path, cancellationToken);
+        if (request.Kind != BasesStorageTransferKind.Base) return new(Path.GetFileName(path), json);
+        var read = BaseExportLogic.ReadExport(JsonObject.Parse(json));
+        var terrain = read.Payload == null ? null : BaseExportLogic.ReadTerrainSidecar(path, read.Payload.Base);
+        return new(Path.GetFileName(path), json, terrain?.TerrainEditData,
+            terrain?.Status == BaseExportLogic.TerrainSidecarStatus.Invalid);
     }
 
     private async Task<bool> ExportBasesStorageAsync(
-        BasesStorageTransferRequest request,
-        string json,
-        CancellationToken cancellationToken)
+        BasesStorageTransferRequest request, string json, CancellationToken cancellationToken)
     {
         string? path = await PickSaveFileAsync(request.Title, request.SuggestedFileName, request.Extensions);
-        if (path is null)
-            return false;
-        await File.WriteAllTextAsync(path, json, cancellationToken);
+        if (path is null) return false;
+        if (request.Kind == BasesStorageTransferKind.Base)
+            BaseExportLogic.WriteExport(request.BasePlayerState, JsonObject.Parse(json), path);
+        else await File.WriteAllTextAsync(path, json, cancellationToken);
         return true;
     }
 

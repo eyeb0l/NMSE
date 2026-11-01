@@ -1,3 +1,5 @@
+using NMSE.Models;
+
 namespace NMSE.UI.Avalonia.Panels.BasesStorage;
 
 public enum BasesStorageTransferKind
@@ -12,7 +14,8 @@ public sealed record BasesStorageTransferRequest(
     string Title,
     string SuggestedFileName,
     IReadOnlyList<string> Extensions,
-    string JsonPath);
+    string JsonPath,
+    JsonObject? BasePlayerState = null);
 
-public sealed record BasesStorageTransferContent(string DisplayName, string JsonText);
+public sealed record BasesStorageTransferContent(string DisplayName, string JsonText, JsonObject? TerrainEditData = null, bool InvalidTerrain = false);
 

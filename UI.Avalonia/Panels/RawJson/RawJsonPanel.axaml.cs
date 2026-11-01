@@ -90,6 +90,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
 
     public void LoadData(JsonObject saveData)
     {
+        if (!ReferenceEquals(_saveData, saveData)) _unsavedSaveBookmarks.Clear();
         _saveData = saveData;
         _showingAccount = false;
         if (!ReferenceEquals(_capturedSaveReference, saveData) || _saveBaseline == null)
@@ -112,6 +113,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
 
     public void SetAccountData(JsonObject? accountData, string? accountFilePath = null)
     {
+        if (!ReferenceEquals(_accountData, accountData)) _unsavedAccountBookmarks.Clear();
         _accountData = accountData;
         _accountFilePath = accountFilePath;
         _accountBaseline = accountData == null
@@ -149,6 +151,10 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
     public void ApplyUiLocalisation()
     {
         TitleText.Text = UiStrings.Get("raw_json.title");
+        BookmarksLabel.Text = UiStrings.Get("raw_json.bookmarks");
+        AddBookmarkButton.Content = UiStrings.Get("raw_json.bookmark_add");
+        ManageBookmarksButton.Content = UiStrings.Get("raw_json.bookmark_manage");
+        ToolTip.SetTip(BookmarkSelector, UiStrings.Get("raw_json.bookmark_tooltip"));
         ExportButton.Content = UiStrings.Get("raw_json.export");
         ImportButton.Content = UiStrings.Get("raw_json.import");
         DiffButton.Content = UiStrings.Get("raw_json.diff");
@@ -210,6 +216,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         {
             _suppressDocumentSelection = false;
         }
+        RefreshBookmarks();
     }
 
     private async void OnDocumentSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -226,6 +233,7 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
         }
 
         _showingAccount = option.IsAccount;
+        RefreshBookmarks();
         ResetEditHistory();
         ReloadCurrentView();
         JsonObject? data = ActiveData;
@@ -427,6 +435,8 @@ public partial class RawJsonPanel : UserControl, ISaveEditorPanel
     {
         if (DiffButton == null) return;
         bool hasDocument = ActiveData != null;
+        AddBookmarkButton.IsEnabled = SelectedNode is { IsRoot: false, IsPlaceholder: false };
+        ManageBookmarksButton.IsEnabled = _bookmarks.Count > 0;
         ExportButton.IsEnabled = hasDocument;
         DiffButton.IsEnabled = hasDocument && ActiveBaseline != null;
         ImportButton.IsEnabled = true;

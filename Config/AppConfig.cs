@@ -28,6 +28,36 @@ public class AppConfig
     }
 
     /// <summary>
+    /// Gets or sets the persisted width of the base-list pane in the Bases panel.
+    /// </summary>
+    public int BaseListWidth
+    {
+        get => int.TryParse(GetProperty("BaseListWidth"), NumberStyles.Integer,
+            CultureInfo.InvariantCulture, out int width) ? width : 500;
+        set => SetProperty("BaseListWidth", value.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// Gets or sets whether temporary and legacy bases are shown in the base list.
+    /// Defaults to true so every PersistentPlayerBases entry is visible.
+    /// </summary>
+    public bool BaseListShowHidden
+    {
+        get => !string.Equals(GetProperty("BaseListShowHidden"), "false", StringComparison.OrdinalIgnoreCase);
+        set => SetProperty("BaseListShowHidden", value ? "true" : "false");
+    }
+
+    /// <summary>
+    /// Gets or sets whether empty locked pet slots are shown in the companion panel.
+    /// Defaults to true; occupied locked slots are always shown regardless of this setting.
+    /// </summary>
+    public bool CompanionShowLockedSlots
+    {
+        get => !string.Equals(GetProperty("CompanionShowLockedSlots"), "false", StringComparison.OrdinalIgnoreCase);
+        set => SetProperty("CompanionShowLockedSlots", value ? "true" : "false");
+    }
+
+    /// <summary>
     /// Gets or sets the recent directories MRU list, stored as pipe-separated paths.
     /// </summary>
     public List<string> RecentDirectories
@@ -186,6 +216,32 @@ public class AppConfig
         set => SetProperty("RawJson.IsolateNode", value ? "true" : "false");
     }
 
+    /// <summary>
+    /// Gets the named Raw JSON Editor bookmarks stored for a save or account scope.
+    /// Malformed stored values are ignored.
+    /// </summary>
+    /// <param name="documentScope">The scope key, for example <c>save-0123456789abcdef</c>.</param>
+    public List<RawJsonBookmark> GetRawJsonBookmarks(string documentScope)
+    {
+        string? raw = GetProperty(BuildRawJsonBookmarksPropertyKey(documentScope));
+        return RawJsonBookmarksLogic.Parse(raw);
+    }
+
+    /// <summary>
+    /// Stores the named Raw JSON Editor bookmarks for a save or account scope.
+    /// An empty list removes the stored value.
+    /// </summary>
+    /// <param name="documentScope">The scope key, for example <c>save-0123456789abcdef</c>.</param>
+    /// <param name="bookmarks">The bookmarks to store.</param>
+    public void SetRawJsonBookmarks(string documentScope, IEnumerable<RawJsonBookmark> bookmarks)
+    {
+        var list = bookmarks.ToList();
+        string value = RawJsonBookmarksLogic.Serialize(list);
+        SetProperty(
+            BuildRawJsonBookmarksPropertyKey(documentScope),
+            list.Count == 0 || value == "[]" ? null : value);
+    }
+
     /// <summary>Save-file watching mode: "prompt", "auto" or "ignore".</summary>
     public string ExternalChangeMode
     {
@@ -218,6 +274,9 @@ public class AppConfig
 
     private static string BuildPinnedSlotsPropertyKey(string saveScopeKey, string inventoryKey)
         => $"PinnedSlots.{saveScopeKey}.{inventoryKey}";
+
+    private static string BuildRawJsonBookmarksPropertyKey(string documentScope)
+        => $"RawJson.Bookmarks.{documentScope}";
 
     public HashSet<(int x, int y)> GetPinnedSlots(string saveScopeKey, string inventoryKey)
     {

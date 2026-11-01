@@ -25,6 +25,9 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
 
     private readonly GameItemDatabase _items;
     private readonly CatalogueDatabase _catalogue = new(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+    private JsonObject? _userSettings;
+    private readonly TextBlock _productCompletion = new();
+    private readonly TextBlock _specialCompletion = new();
     private readonly TextBlock _techCompletion = new() { Name = "TechnologyCompletion" };
     private readonly RecipeDatabase _recipes;
     private readonly WordDatabase _words;
@@ -177,7 +180,9 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
 
     public void SetAccountData(JsonObject? accountData)
     {
+        _userSettings = accountData?.GetObject("UserSettingsData") ?? accountData;
         foreach (var panel in _completionPanels) panel.SetAccountData(accountData);
+        UpdateTechnologyCompletion();
     }
 
     public void SaveData(JsonObject saveData)
@@ -243,8 +248,9 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _knownRecipesTab.Header = UiStrings.Get("recipe.tab_known_recipes");
         _recipeBrowserTab.Header = UiStrings.Get("recipe.tab_recipe_info");
         LocaliseButtons();
-        if (_buttons.TryGetValue("Technologies.complete", out var complete))
-            complete.Content = UiStrings.Get("discovery.add_all_missing");
+        foreach (var kind in new[] { "Technologies", "Products", "Specials" })
+            if (_buttons.TryGetValue(kind + ".complete", out var complete))
+                complete.Content = UiStrings.Get("discovery.add_all_missing");
         UpdateTechnologyCompletion();
         _techFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
         _productFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
@@ -292,12 +298,10 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         var export = RegisterButton($"{kind}.export", CatalogueUi.AsyncButton(string.Empty, () => ExportListAsync(kind)));
         var import = RegisterButton($"{kind}.import", CatalogueUi.AsyncButton(string.Empty, () => ImportListAsync(kind)));
         var footer = CatalogueUi.Toolbar(addButton, remove, export, import);
-        if (kind == CatalogueTransferKind.Technologies)
-        {
-            var complete = RegisterButton("Technologies.complete", CatalogueUi.AsyncButton(string.Empty, CompleteTechnologiesAsync));
-            complete.Name = "CompleteTechnologies";
-            footer.Children.Add(complete); footer.Children.Add(_techCompletion);
-        }
+        var complete = RegisterButton(kind + ".complete", CatalogueUi.AsyncButton(string.Empty, () => CompleteItemsAsync(kind)));
+        complete.Name = "Complete" + kind;
+        footer.Children.Add(complete);
+        footer.Children.Add(kind == CatalogueTransferKind.Technologies ? _techCompletion : kind == CatalogueTransferKind.Products ? _productCompletion : _specialCompletion);
         return (grid, filter, CatalogueUi.PageGrid(top, grid, footer));
     }
 

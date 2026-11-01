@@ -48,7 +48,7 @@ public sealed class HotkeysPanel : UserControl
                 combo.SelectionChanged += (_, _) => OnActionChanged(context, slot);
                 parameters.Click += async (_, _) => await EditParametersAsync(context, slot);
                 var row = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), ColumnSpacing = 6 };
-                row.Children.Add(new TextBlock { Text = $"Ctrl+{(s + 1) % 10}", VerticalAlignment = VerticalAlignment.Center });
+                row.Children.Add(new TextBlock { Text = $"Ctrl+{s}", VerticalAlignment = VerticalAlignment.Center });
                 row.Children.Add(combo); Grid.SetColumn(combo, 1);
                 row.Children.Add(parameters); Grid.SetColumn(parameters, 2);
                 rows.Children.Add(row);

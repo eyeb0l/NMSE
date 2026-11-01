@@ -57,29 +57,68 @@ public sealed partial class CataloguePanel
         item => CatalogueLogic.TechItemTypes.Contains(item.ItemType) &&
                 !item.BrokenSlotTech && !GameItemDatabase.IsPickerExcluded(item.Id) && CatalogueLogic.IsLearnableTechnology(item));
 
+    private (string Array, string Seen, IReadOnlyList<string> Ids, ObservableCollection<CatalogueItemRow> Rows, ObservableCollection<CatalogueItemRow> Visible, TextBox Filter, TextBlock Counter) CompletionList(CatalogueTransferKind kind) => kind switch
+    {
+        CatalogueTransferKind.Products => ("KnownProducts", "SeenProducts", _catalogue.KnownProductsForCompletion(_items), _productRows, _visibleProductRows, _productFilter, _productCompletion),
+        CatalogueTransferKind.Specials => ("KnownSpecials", "SeenProducts", _catalogue.KnownSpecialsForCompletion(_items), _specialRows, _visibleSpecialRows, _specialFilter, _specialCompletion),
+        _ => ("KnownTech", "SeenTechnologies", _catalogue.KnownTechForCompletion(_items), _techRows, _visibleTechRows, _techFilter, _techCompletion)
+    };
+
     private void UpdateTechnologyCompletion()
     {
-        if (_playerState == null) { _techCompletion.Text = string.Empty; return; }
-        var view = new JsonObject(); view.Set("KnownTech", StringArray(_techRows.Select(row => row.Id)));
-        var (have, total) = CatalogueCompletionLogic.GetCompletion(view, "KnownTech", _catalogue.KnownTechForCompletion(_items));
-        _techCompletion.Text = UiStrings.Format("discovery.completion_counter", have, total, total == 0 ? 0 : (int)Math.Round(100d * have / total));
+        foreach (var kind in new[] { CatalogueTransferKind.Technologies, CatalogueTransferKind.Products, CatalogueTransferKind.Specials })
+        {
+            var list = CompletionList(kind);
+            if (_playerState == null) { list.Counter.Text = string.Empty; continue; }
+            var view = new JsonObject(); view.Set(list.Array, StringArray(list.Rows.Select(row => row.Id)));
+            var (have, total) = CatalogueCompletionLogic.GetCombinedCompletion(view, list.Array, _userSettings, list.Seen, list.Ids);
+            list.Counter.Text = UiStrings.Format("discovery.completion_counter", have, total, total == 0 ? 0 : (int)Math.Round(100d * have / total));
+        }
     }
 
-    private async Task CompleteTechnologiesAsync()
+    private Task CompleteTechnologiesAsync() => CompleteItemsAsync(CatalogueTransferKind.Technologies);
+
+    private async Task CompleteItemsAsync(CatalogueTransferKind kind)
     {
         if (_playerState == null) return;
-        var ids = _catalogue.KnownTechForCompletion(_items);
-        var view = new JsonObject(); view.Set("KnownTech", StringArray(_techRows.Select(row => row.Id)));
-        var (have, total) = CatalogueCompletionLogic.GetCompletion(view, "KnownTech", ids);
-        if (have == total) return;
-        if (ConfirmAsync != null && !await ConfirmAsync(UiStrings.Get("discovery.add_all_missing_title"),
-            UiStrings.Format("discovery.add_all_missing_confirm", total - have), default)) return;
-        CatalogueLogic.SaveKnownItemIds(_playerState, "KnownTech", _techRows.Select(row => row.Id).ToList());
-        if (CatalogueCompletionLogic.AddMissingIds(_playerState, "KnownTech", ids) > 0)
+        var list = CompletionList(kind);
+        var view = new JsonObject(); view.Set(list.Array, StringArray(list.Rows.Select(row => row.Id)));
+        var (have, total) = CatalogueCompletionLogic.GetCombinedCompletion(view, list.Array, _userSettings, list.Seen, list.Ids);
+        int missing = total - have;
+        if (kind == CatalogueTransferKind.Products)
         {
-            LoadKnownItems(_playerState, "KnownTech", _techRows, _visibleTechRows, _techFilter.Text);
-            RaiseModified();
+            var specials = CompletionList(CatalogueTransferKind.Specials);
+            var specialView = new JsonObject(); specialView.Set(specials.Array, StringArray(specials.Rows.Select(row => row.Id)));
+            var specialCount = CatalogueCompletionLogic.GetCompletion(specialView, specials.Array, specials.Ids);
+            missing += specialCount.Total - specialCount.Have;
+            if (_userSettings != null)
+            {
+                var substances = CatalogueCompletionLogic.GetSeenCompletion(_userSettings, "SeenSubstances", _catalogue.SeenSubstances);
+                missing += substances.Total - substances.Have;
+            }
         }
+        // Technology entries filtered out of KnownTech still belong in the account seen list.
+        if (kind == CatalogueTransferKind.Technologies && _userSettings != null)
+        {
+            var seen = CatalogueCompletionLogic.GetSeenCompletion(_userSettings, list.Seen, _catalogue.KnownTech);
+            missing = Math.Max(missing, seen.Total - seen.Have);
+        }
+        if (missing == 0) return;
+        if (ConfirmAsync != null && !await ConfirmAsync(UiStrings.Get("discovery.add_all_missing_title"), UiStrings.Format("discovery.add_all_missing_confirm", missing), default)) return;
+        CatalogueLogic.SaveKnownItemIds(_playerState, list.Array, list.Rows.Select(row => row.Id).ToList());
+        int changed = CatalogueCompletionLogic.AddMissingIds(_playerState, list.Array, list.Ids);
+        if (_userSettings != null)
+            changed += CatalogueCompletionLogic.AddMissingSeen(_userSettings, list.Seen, kind == CatalogueTransferKind.Technologies ? _catalogue.KnownTech : list.Ids);
+        if (kind == CatalogueTransferKind.Products)
+        {
+            CatalogueLogic.SaveKnownItemIds(_playerState, "KnownSpecials", _specialRows.Select(row => row.Id).ToList());
+            changed += CatalogueCompletionLogic.AddMissingIds(_playerState, "KnownSpecials", _catalogue.KnownSpecialsForCompletion(_items));
+            if (_userSettings != null) changed += CatalogueCompletionLogic.AddMissingSeen(_userSettings, "SeenSubstances", _catalogue.SeenSubstances);
+            LoadKnownItems(_playerState, "KnownSpecials", _specialRows, _visibleSpecialRows, _specialFilter.Text);
+        }
+        LoadKnownItems(_playerState, list.Array, list.Rows, list.Visible, list.Filter.Text);
+        if (changed > 0) RaiseModified();
+        else UpdateTechnologyCompletion();
     }
 
     private Task AddProductAsync() => AddItemsAsync(

@@ -11,8 +11,9 @@ internal sealed class BaseListItem(string displayName, JsonObject data, int data
     public int DataIndex { get; set; } = dataIndex;
     public bool IsFreighterBase { get; } = isFreighterBase;
     public SpaceStationLogic.BaseKind Kind => SpaceStationLogic.GetBaseKind(Data);
+    public bool NameEditable => BaseListLogic.Classify(Data) is BaseListLogic.BaseListKind.Home or BaseListLogic.BaseListKind.SpaceStation or BaseListLogic.BaseListKind.SpaceBase;
     public bool IsShipNamed => IsFreighterBase || Kind == SpaceStationLogic.BaseKind.Corvette;
-    public bool IsPlanetary => Kind == SpaceStationLogic.BaseKind.Home;
+    public bool IsPlanetary => BaseListLogic.Classify(Data) == BaseListLogic.BaseListKind.Home;
     public override string ToString()
     {
         string marker = Kind switch
