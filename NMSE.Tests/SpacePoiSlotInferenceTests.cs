@@ -6,6 +6,8 @@ namespace NMSE.Tests;
 /// <summary>
 /// Tests for the space POI slot type inference and the Space POI table loader.
 /// </summary>
+// Reloads shared static databases; serialize with their other readers and writers.
+[Collection("MutableStaticDatabases")]
 public class SpacePoiSlotInferenceTests
 {
     private static string? FindResourceJsonDir()

@@ -40,19 +40,20 @@ This guide walks you through every feature of the application so you can confide
 
 ### What You Need
 
-- **Windows 10 or 11** (64-bit). Release builds are also published as a Linux AppImage (with bundled Wine) and a macOS DMG (Wine launcher)
+- **Windows 10/11, Linux x64 or ARM64, or macOS 14+** (Apple Silicon or Intel)
 - A *No Man's Sky* save file from any supported platform
 
 ### Installing NMSE
 
 1. Download the latest version from the [**Releases page**][releases]
-2. Extract the `.zip` file to any folder on your computer
-3. Double-click **`NMSE.exe`** to launch the editor
+2. On Windows, extract the ZIP and launch **`NMSE.exe`**. On Linux, extract the
+   tarball and run **`./NMSE`**. Choose `linux-arm64` when `uname -m` reports
+   `aarch64`/`arm64`, or `linux-x64` for `x86_64`. On macOS, open the DMG and drag
+   **NMSE.app** to Applications. Choose `macOS-arm64` for Apple Silicon or
+   `macOS-x64` for Intel; Windows packages are labelled `windows-x64`.
 
-> 💡 No installation is required - NMSE is fully portable. You can run it from a USB drive or any folder.
-
-
-While NMSE is a native Windows application, it runs on **Linux** and **macOS** via Wine compatibility layers. Release builds are published as a Windows `.zip`, a Linux AppImage with bundled Wine, and a macOS DMG with a Wine launcher. Guides are available for [Wine][guide-wine], [Bottles][guide-bottles], [Gcenx Wine Builds][guide-gcenx-wine] (free, recommended for macOS) and [CrossOver][guide-crossover] (paid, supported).
+> 💡 Every release is self-contained. A separate .NET runtime, Wine, Whisky, Bottles,
+> or CrossOver is not required.
 
 ### Supported Platforms
 
@@ -84,7 +85,7 @@ If a save and slot are already selected, click <kbd>Load</kbd> and you're good t
 
 While no save is loaded, every editing tab shows a no-save overlay and its controls are greyed out. **Export Settings** and **Database Search** stay usable because they do not need a save.
 
-> ℹ️ Save folders under Linux (using the AppImage, you can browse with either / or Z:).
+> ℹ️ Common Linux save folders:
 > 
 > - SteamOS: ```/home/deck/.local/share/Steam/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS/st_<steamid>/```
 > - Flatpak: ```/var/home/<username>/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/275850/pfx/drive_c/users/steamuser/AppData/Roaming/HelloGames/NMS/st_<steamid>/```
@@ -1069,7 +1070,12 @@ The <kbd>Check Consistency</kbd> button compares your account and save reward ar
 |-------|
 | <img src="../img/consistency-dialog.png"> |
 
-Platform rewards may require the user settings MXML file to also be edited directly depending on your platform. It will auto find the file on supported platforms, if not browse to `GCUSERSETTINGSDATA.MXML` in the NMS `Binaries\SETTINGS\` directory
+On macOS, NMSE loads account rewards, guide state and titles from
+`~/Library/Application Support/HelloGames/NMS/SETTINGS/GcUserSettingsData.mxml`
+because the native game does not create `accountdata.hg`. NMSE creates a `.nmse.bak`
+backup and validates edited arrays before replacing this file. On other PC platforms,
+platform rewards may additionally use `GCUSERSETTINGSDATA.MXML` in the NMS
+`Binaries\SETTINGS\` directory; NMSE auto-detects it where supported or allows manual selection.
 
 > 💡 **Tips:** <br>
 > Due to how the game works, Twitch drops and platform rewards, you need to set your game to offline before starting the game to unlock the rewards. <br>

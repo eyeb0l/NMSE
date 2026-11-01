@@ -201,4 +201,18 @@ public class SaveDirectoryDetectionTests : IDisposable
 
         Assert.Empty(dirs);
     }
+
+    [Fact]
+    public void FindDefaultSaveDirectories_OffersEveryNativeMacProfileWithoutSettings()
+    {
+        string home = Dir("home");
+        string steam = Dir("home", "Library", "Application Support", "HelloGames", "NMS", "st_123");
+        string gog = Dir("home", "Library", "Application Support", "HelloGames", "NMS", "DefaultUser");
+        string settings = Dir("home", "Library", "Application Support", "HelloGames", "NMS", "SETTINGS");
+        WriteFile(steam, "save.hg"); WriteFile(gog, "accountdata.hg");
+        var dirs = SaveFileManager.FindDefaultSaveDirectories(Dir("appdata"), Dir("localappdata"), home);
+        Assert.Equal(2, dirs.Count);
+        Assert.Contains(steam, dirs); Assert.Contains(gog, dirs); Assert.DoesNotContain(settings, dirs);
+        Assert.Equal(Path.GetDirectoryName(steam), SaveFileManager.FindMacOsSaveDirectory(home));
+    }
 }

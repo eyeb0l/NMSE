@@ -26,6 +26,13 @@ public class DiscoveriesStoreTests : IDisposable
     }
 
     [Fact]
+    public void DefaultDirectory_IsWritableUserDataRatherThanApplicationBundle()
+    {
+        DiscoveriesStore.SetDirectoryOverride(null);
+        Assert.Equal(Path.Combine(ApplicationPaths.Current.UserDataDirectory, "Discoveries"), DiscoveriesStore.DataDirectory);
+    }
+
+    [Fact]
     public void SaveDirty_WritesAndReloads()
     {
         var file = DiscoveriesStore.Get("space-poi-layouts.json", AppJsonContext.Default.SpacePoiLayoutsFile);

@@ -151,11 +151,20 @@ public class SaveFileManager
 
     /// <summary>
     /// Attempts to find the default NMS save directory for the current OS.
-    /// Returns the first of <see cref="FindDefaultSaveDirectories"/>, or null when none exists.
+    /// Keeps the macOS profile-containing root, otherwise uses the first of
+    /// <see cref="FindDefaultSaveDirectories"/>. Returns null when none exists.
     /// </summary>
     /// <returns>The path to the first discovered save directory, or null if not found.</returns>
     public static string? FindDefaultSaveDirectory()
-        => FindDefaultSaveDirectories().FirstOrDefault();
+    {
+        // Keep the native macOS toolbar rooted above all profiles and sibling SETTINGS.
+        if (OperatingSystem.IsMacOS())
+        {
+            string? root = FindMacOsSaveDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            if (root is not null) return root;
+        }
+        return FindDefaultSaveDirectories().FirstOrDefault();
+    }
 
     /// <summary>
     /// Attempts to find every default NMS save directory for the current OS, in preference
@@ -410,14 +419,45 @@ public class SaveFileManager
             : StringComparison.Ordinal);
 
     /// <summary>
+    /// Resolves the No Man's Sky save root under a macOS home directory. Save profiles
+    /// and the unrelated game settings directory are siblings below this location.
+    /// </summary>
+    internal static string? FindMacOsSaveDirectory(string homeDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(homeDirectory))
+            return null;
+        string root = Path.Combine(
+            homeDirectory, "Library", "Application Support", "HelloGames", "NMS");
+        return Directory.Exists(root) ? root : null;
+    }
+
+    /// <summary>
+    /// Migrates the old macOS default, which could incorrectly select the NMS
+    /// <c>Settings</c> directory, back to the profile-containing NMS root.
+    /// </summary>
+    internal static string NormalizeMacOsSaveDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+            return directory;
+
+        var info = new DirectoryInfo(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        DirectoryInfo? parent = info.Parent;
+        return string.Equals(info.Name, "Settings", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(parent?.Name, "NMS", StringComparison.OrdinalIgnoreCase)
+            ? parent!.FullName
+            : directory;
+    }
+
+    /// <summary>
     /// Resolves the backup root directory. Priority:
     /// 1. User-configured path (<see cref="Config.AppConfig.BackupDirectory"/>)
-    /// 2. EXE-relative "Save Backups" folder
-    /// 3. %TEMP%\NMSE\Save Backups (fallback)
+    /// 2. Platform user-data folder on macOS and Linux
+    /// 3. EXE-relative "Save Backups" folder (legacy Windows portable layout)
+    /// 4. %TEMP%\NMSE\Save Backups (fallback)
     /// Creates the directory if it doesn't exist. If the configured path cannot be
     /// created (e.g. the drive is unavailable or permissions are insufficient),
-    /// falls back to the EXE-relative folder and then to TEMP so backups are never
-    /// silently skipped.
+    /// falls back through the platform defaults and then to TEMP so backups are
+    /// never silently skipped.
     /// </summary>
     public static string ResolveBackupRoot()
     {
@@ -432,31 +472,53 @@ public class SaveFileManager
             }
             catch
             {
-                // Fall through to the EXE-relative location
+                // Fall through to the platform-appropriate default location.
             }
         }
 
-        // 2. EXE-relative
-        string exeDir = AppDomain.CurrentDomain.BaseDirectory;
-        string exeRoot = Path.Combine(exeDir, "Save Backups");
-        try
+        // 2. Platform user-data location. Packaged app bundles are read-only;
+        // macOS and Linux must never attempt to create backups beside the executable.
+        if (!OperatingSystem.IsWindows())
         {
-            Directory.CreateDirectory(exeRoot);
-            return exeRoot;
+            string userRoot = ApplicationPaths.Current.BackupsDirectory;
+            try
+            {
+                Directory.CreateDirectory(userRoot);
+                return userRoot;
+            }
+            catch
+            {
+                // Continue to the temporary fallback below.
+            }
         }
-        catch
+
+        // 3. EXE-relative (legacy Windows portable layout)
+        if (OperatingSystem.IsWindows())
         {
-            // 3. TEMP fallback
-            string tempRoot = Path.Combine(Path.GetTempPath(), "NMSE", "Save Backups");
-            Directory.CreateDirectory(tempRoot);
-            return tempRoot;
+            string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+            string exeRoot = Path.Combine(exeDir, "Save Backups");
+            try
+            {
+                Directory.CreateDirectory(exeRoot);
+                return exeRoot;
+            }
+            catch
+            {
+                // Continue to the temporary fallback below.
+            }
         }
+
+        // 4. TEMP fallback
+        string tempRoot = Path.Combine(Path.GetTempPath(), "NMSE", "Save Backups");
+        Directory.CreateDirectory(tempRoot);
+        return tempRoot;
     }
 
     /// <summary>
     /// Returns all existing backup root directories that may contain backup ZIPs,
     /// in priority order. Does not create directories. Used by restore UI to find
-    /// backups regardless of where they were written.
+    /// backups regardless of whether they were written to a configured,
+    /// platform user-data, legacy executable-relative, or temporary location.
     /// The same directory is never returned twice, even when the user-configured
     /// path overlaps the EXE-relative or TEMP fallback (e.g. when the default
     /// backup folder was selected from the toolbar combo).
@@ -480,12 +542,17 @@ public class SaveFileManager
         if (!string.IsNullOrEmpty(configured) && Directory.Exists(configured))
             AddIfMissing(configured);
 
-        // 2. EXE-relative (if exists)
+        // 2. Platform user-data location (if it exists)
+        string userRoot = ApplicationPaths.Current.BackupsDirectory;
+        if (Directory.Exists(userRoot))
+            AddIfMissing(userRoot);
+
+        // 3. EXE-relative (if it exists)
         string exeRoot = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Save Backups");
         if (Directory.Exists(exeRoot))
             AddIfMissing(exeRoot);
 
-        // 3. TEMP fallback (if exists)
+        // 4. TEMP fallback (if it exists)
         string tempRoot = Path.Combine(Path.GetTempPath(), "NMSE", "Save Backups");
         if (Directory.Exists(tempRoot))
             AddIfMissing(tempRoot);
@@ -515,9 +582,9 @@ public class SaveFileManager
     /// retaining up to 10 backups.  Uses <see cref="ResolveBackupRoot"/> to
     /// determine the backup location.
     /// The file set depends on the platform detected in the directory:
-    /// PC platforms back up *.hg files plus meta.json; Xbox Game Pass backs up
-    /// all files (GUID-named blobs, containers.index); PS4 with a monolithic
-    /// memory.dat backs up memory.dat plus any *.hg files.
+    /// PC platforms back up *.hg files plus meta.json; Xbox Game Pass and Switch
+    /// back up all platform payloads; PS4 with a monolithic memory.dat backs up
+    /// memory.dat plus any *.hg files.
     /// </summary>
     /// <param name="saveDirectory">The save directory to back up.</param>
     public static void BackupSaveDirectory(string saveDirectory)
@@ -550,7 +617,7 @@ public class SaveFileManager
 
     /// <summary>
     /// Returns all backup ZIP paths for the given save directory, across every
-    /// existing backup root (configured, EXE-relative, TEMP), newest first.
+    /// existing backup root (configured, user-data, EXE-relative, TEMP), newest first.
     /// Each backup file is returned at most once even if a directory appears
     /// in multiple roots (e.g. the configured path overlapping a fallback).
     /// </summary>
@@ -650,8 +717,11 @@ public class SaveFileManager
         using var zip = ZipFile.OpenRead(zipPath);
         foreach (var entry in zip.Entries)
         {
-            string entryPath = entry.FullName;
-            if (string.IsNullOrEmpty(entryPath)) continue;
+            string entryPath = NormalizeArchiveEntryPath(entry.FullName);
+            if (string.IsNullOrEmpty(entryPath)
+                || entry.FullName.EndsWith("/", StringComparison.Ordinal)
+                || entry.FullName.EndsWith("\\", StringComparison.Ordinal))
+                continue;
 
             string fullPath;
             try
@@ -663,7 +733,12 @@ public class SaveFileManager
                 continue;
             }
 
-            if (!fullPath.StartsWith(basePrefix, StringComparison.OrdinalIgnoreCase))
+            StringComparison pathComparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            if (!fullPath.StartsWith(basePrefix, pathComparison))
+                continue;
+            if (ContainsReparsePoint(basePath, fullPath))
                 continue;
 
             string? parent = Path.GetDirectoryName(fullPath);
@@ -685,7 +760,7 @@ public class SaveFileManager
     {
         foreach (var entry in zip.Entries)
         {
-            string entryName = Path.GetFileName(entry.FullName.Replace('/', Path.DirectorySeparatorChar));
+            string entryName = Path.GetFileName(NormalizeArchiveEntryPath(entry.FullName));
             if (string.Equals(entryName, fileName, StringComparison.OrdinalIgnoreCase))
                 return entry;
         }
@@ -693,21 +768,70 @@ public class SaveFileManager
     }
 
     /// <summary>
+    /// Converts either ZIP path separator spelling to the current platform's
+    /// separator before file-name and traversal checks are applied.
+    /// </summary>
+    private static string NormalizeArchiveEntryPath(string entryPath) =>
+        entryPath
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+
+    /// <summary>
+    /// Rejects existing symbolic-link or reparse-point components below the
+    /// trusted destination root so archive extraction cannot escape through a
+    /// link even when the resulting path is lexically inside that root.
+    /// </summary>
+    private static bool ContainsReparsePoint(string basePath, string destinationPath)
+    {
+        string relativePath = Path.GetRelativePath(basePath, destinationPath);
+        string current = basePath;
+        foreach (string component in relativePath.Split(
+                     [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                     StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, component);
+            try
+            {
+                if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                    return true;
+            }
+            catch (FileNotFoundException)
+            {
+                // A not-yet-created component cannot redirect extraction.
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // A not-yet-created component cannot redirect extraction.
+            }
+            catch
+            {
+                // If an existing path cannot be inspected, do not write through it.
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Creates a zip containing the backup-relevant files of the given directory
     /// tree. The file set depends on the platform detected in the directory:
-    /// PC platforms back up *.hg files plus meta.json; Xbox Game Pass backs up
-    /// all files (GUID-named blobs, containers.index); PS4 with a monolithic
-    /// memory.dat backs up memory.dat plus any *.hg files.
+    /// PC platforms back up *.hg files plus meta.json; Xbox Game Pass and Switch
+    /// back up all platform payloads; PS4 with a monolithic memory.dat backs up
+    /// memory.dat plus any *.hg files.
     /// </summary>
     private static void CreateFilteredZip(string sourceDir, string zipPath)
     {
         using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
         string basePath = Path.GetFullPath(sourceDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        StringComparison pathComparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
         foreach (string filePath in EnumerateBackupFilesSafe(sourceDir))
         {
             string fullFilePath = Path.GetFullPath(filePath);
-            if (!fullFilePath.StartsWith(basePath + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            if (!fullFilePath.StartsWith(basePath + Path.DirectorySeparatorChar, pathComparison))
                 continue;
 
             string relativePath = fullFilePath[(basePath.Length + 1)..];
@@ -726,11 +850,24 @@ public class SaveFileManager
     {
         string[] patterns = BackupFilePatterns(root);
         var dirs = new Queue<string>();
+        var visited = new HashSet<string>(
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         dirs.Enqueue(root);
 
         while (dirs.Count > 0)
         {
             string dir = dirs.Dequeue();
+            string fullDirectory;
+            try
+            {
+                fullDirectory = Path.GetFullPath(dir);
+            }
+            catch
+            {
+                continue;
+            }
+            if (!visited.Add(fullDirectory))
+                continue;
 
             string[] files;
             try
@@ -744,6 +881,8 @@ public class SaveFileManager
 
             foreach (string file in files)
             {
+                if (IsReparsePoint(file))
+                    continue;
                 if (patterns.Any(p => p == "*" || file.EndsWith(p, StringComparison.OrdinalIgnoreCase)))
                     yield return file;
             }
@@ -759,7 +898,24 @@ public class SaveFileManager
             }
 
             foreach (string subDir in subDirs)
-                dirs.Enqueue(subDir);
+            {
+                if (!IsReparsePoint(subDir))
+                    dirs.Enqueue(subDir);
+            }
+        }
+    }
+
+    private static bool IsReparsePoint(string path)
+    {
+        try
+        {
+            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        }
+        catch
+        {
+            // Inaccessible entries are unsafe to archive and were previously
+            // skipped by the surrounding enumeration guards anyway.
+            return true;
         }
     }
 
@@ -772,7 +928,8 @@ public class SaveFileManager
         switch (DetectPlatform(root))
         {
             case Platform.XboxGamePass:
-                // Xbox save data are GUID-named blobs plus containers.index - no .hg files
+            case Platform.Switch:
+                // Xbox and Switch save data include platform-specific non-.hg payloads.
                 return new[] { "*" };
             case Platform.PS4 when File.Exists(Path.Combine(root, "memory.dat")):
                 // PS4 monolithic memory.dat holds all slots in a single binary file
@@ -1209,6 +1366,86 @@ using var outFs = new FileStream(filePath, FileMode.Create, FileAccess.Write, Fi
         RegisterContextTransforms(result);
         return result;
     }
+
+    /// <summary>
+    /// Replaces one JSON slot inside a PS4 <c>memory.dat</c> container while
+    /// preserving every other slot and the container's original format.
+    /// </summary>
+    public static void SavePS4MemoryDatSave(string memoryDatPath, int slotIndex, JsonObject data)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(memoryDatPath);
+        ArgumentNullException.ThrowIfNull(data);
+
+        MemoryDatSlot[] slots = MemoryDatManager.ReadSlots(memoryDatPath);
+        if (slotIndex < 0 || slotIndex >= slots.Length || !slots[slotIndex].Exists)
+            throw new InvalidOperationException($"PS4 memory.dat slot {slotIndex} does not exist.");
+
+        byte[] original = File.ReadAllBytes(memoryDatPath);
+        bool isSaveWizard = slots[slotIndex].IsSaveWizard;
+        var slotData = new Dictionary<int, byte[]>();
+        var slotMeta = slots.ToDictionary(slot => slot.Index, CloneMemoryDatSlot);
+
+        foreach (MemoryDatSlot slot in slots.Where(slot => slot.Exists))
+        {
+            if (slot.Index == slotIndex)
+                continue;
+
+            int offset = checked((int)(slot.IsSaveWizard ? slot.SaveWizardDataOffset : slot.ChunkOffset));
+            int length = checked((int)(slot.IsSaveWizard ? slot.DecompressedSize : slot.CompressedSize));
+            if (offset <= 0 || length <= 0 || offset > original.Length - length)
+                throw new InvalidDataException($"PS4 memory.dat slot {slot.Index} points outside the container.");
+
+            byte[] bytes = new byte[length];
+            Buffer.BlockCopy(original, offset, bytes, 0, length);
+            slotData[slot.Index] = bytes;
+        }
+
+        byte[] jsonBytes = Latin1.GetBytes(data.ToString());
+        byte[] terminatedJson = new byte[jsonBytes.Length + 1];
+        Buffer.BlockCopy(jsonBytes, 0, terminatedJson, 0, jsonBytes.Length);
+        MemoryDatSlot targetMeta = slotMeta[slotIndex];
+        targetMeta.Timestamp = DateTimeOffset.UtcNow;
+        targetMeta.DecompressedSize = checked((uint)terminatedJson.Length);
+
+        if (isSaveWizard)
+        {
+            targetMeta.CompressedSize = checked((uint)terminatedJson.Length);
+            targetMeta.ChunkSize = checked((uint)terminatedJson.Length);
+            slotData[slotIndex] = terminatedJson;
+            MemoryDatManager.WriteMemoryDatSaveWizard(memoryDatPath, slotData, slotMeta);
+            return;
+        }
+
+        byte[] buffer = new byte[Lz4Compressor.MaxCompressedLength(terminatedJson.Length)];
+        int compressedLength = Lz4Compressor.Compress(
+            terminatedJson, 0, terminatedJson.Length, buffer, 0, buffer.Length);
+        if (targetMeta.ChunkSize > 0 && compressedLength > targetMeta.ChunkSize)
+        {
+            throw new IOException(
+                $"The updated PS4 save requires {compressedLength} bytes, but slot {slotIndex} has only {targetMeta.ChunkSize} bytes.");
+        }
+
+        byte[] compressed = new byte[compressedLength];
+        Buffer.BlockCopy(buffer, 0, compressed, 0, compressedLength);
+        targetMeta.CompressedSize = checked((uint)compressedLength);
+        slotData[slotIndex] = compressed;
+        MemoryDatManager.WriteMemoryDat(memoryDatPath, slotData, slotMeta);
+    }
+
+    private static MemoryDatSlot CloneMemoryDatSlot(MemoryDatSlot slot) => new()
+    {
+        Index = slot.Index,
+        Exists = slot.Exists,
+        MetaFormat = slot.MetaFormat,
+        CompressedSize = slot.CompressedSize,
+        ChunkOffset = slot.ChunkOffset,
+        ChunkSize = slot.ChunkSize,
+        MetaIndex = slot.MetaIndex,
+        Timestamp = slot.Timestamp,
+        DecompressedSize = slot.DecompressedSize,
+        IsSaveWizard = slot.IsSaveWizard,
+        SaveWizardDataOffset = slot.SaveWizardDataOffset,
+    };
 
     /// <summary>
     /// Register the context-based path transforms on a loaded save.

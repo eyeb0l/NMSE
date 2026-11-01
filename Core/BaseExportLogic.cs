@@ -148,13 +148,13 @@ internal static class BaseExportLogic
         var terrain = playerState == null ? null : ExtractTerrainForBase(playerState, baseObject);
         if (terrain == null)
         {
-            bool removed = File.Exists(sidecarPath);
+            bool removed = SidecarExists(sidecarPath);
             if (removed)
                 File.Delete(sidecarPath);
             return new ExportWriteResult(0, null, removed);
         }
 
-        if (File.Exists(sidecarPath))
+        if (SidecarExists(sidecarPath))
             File.Delete(sidecarPath);
 
         var sidecar = new JsonObject();
@@ -166,6 +166,11 @@ internal static class BaseExportLogic
         int bufferCount = terrain.GetArray("GalacticAddresses")?.Length ?? 0;
         return new ExportWriteResult(bufferCount, sidecarPath, false);
     }
+
+    // Include dangling links: an export must replace the sidecar itself, never
+    // create or overwrite the destination of an old symbolic link.
+    private static bool SidecarExists(string path) =>
+        File.Exists(path) || new FileInfo(path).LinkTarget != null;
 
     /// <summary>Gets the sidecar path used for a base file.</summary>
     /// <param name="basePath">The base file path.</param>

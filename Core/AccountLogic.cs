@@ -93,7 +93,8 @@ internal static class AccountLogic
     }
 
     /// <summary>
-    /// Loads account data from the accountdata.hg file in the specified save directory.
+    /// Loads account data from accountdata.hg, PlayStation savedata00.hg, or the
+    /// macOS GcUserSettingsData.mxml account store associated with the save profile.
     /// </summary>
     /// <param name="saveDirectory">The path to the save directory containing accountdata.hg.</param>
     /// <returns>An <see cref="AccountData"/> with loaded reward sets, or an error message if loading failed.</returns>
@@ -110,12 +111,10 @@ internal static class AccountLogic
             }
             else
             {
-                // Get GcUserSettingsData.mxml for account use on macOS for account rewards
-                // and not just platform rewards.
-                string? mxmlPath = MxmlRewardEditor.FindMxmlPath(saveDirectory);
-                if (mxmlPath != null)
-                    return LoadMxmlAccountData(mxmlPath);
-                return new AccountData { ErrorMessage = UiStrings.Get("account.not_found") };
+                string? mxmlPath = MxmlRewardEditor.FindUserSettingsPath(saveDirectory);
+                return mxmlPath is null
+                    ? new AccountData { ErrorMessage = UiStrings.Get("account.not_found") }
+                    : LoadMxmlAccountData(mxmlPath);
             }
         }
 
@@ -148,59 +147,38 @@ internal static class AccountLogic
         }
     }
 
-    /// <summary>
-    /// Loads account data from the macOS GcUserSettingsData.mxml file. There is no
-    /// accountdata.hg on macOS, so this file supplies the season, Twitch, platform and
-    /// special reward lists. A JSON view is built in memory so the existing account
-    /// editing flow works; saves are routed back to the MXML file.
-    /// </summary>
-    /// <param name="mxmlPath">Full path to GcUserSettingsData.mxml.</param>
-    /// <returns>An <see cref="AccountData"/> with loaded reward sets, or an error message if loading failed.</returns>
+    /// <summary>Loads the macOS MXML account arrays into the normal editor model.</summary>
     internal static AccountData LoadMxmlAccountData(string mxmlPath)
     {
         try
         {
-            var seasonUnlocked = MxmlRewardEditor.ReadUnlockedSeasonRewards(mxmlPath);
-            var twitchUnlocked = MxmlRewardEditor.ReadUnlockedTwitchRewards(mxmlPath);
-            var platformUnlocked = MxmlRewardEditor.ReadUnlockedRewards(mxmlPath);
-            var specialsUnlocked = MxmlRewardEditor.ReadUnlockedSpecials(mxmlPath);
-
-            var userSettings = new JsonObject();
-            AddRewardArray(userSettings, "UnlockedSeasonRewards", seasonUnlocked);
-            AddRewardArray(userSettings, "UnlockedTwitchRewards", twitchUnlocked);
-            AddRewardArray(userSettings, "UnlockedPlatformRewards", platformUnlocked);
-            AddRewardArray(userSettings, "UnlockedSpecials", specialsUnlocked);
-
-            var accountObj = new JsonObject();
-            accountObj.Set("UserSettingsData", userSettings);
-
+            JsonObject accountObj = MxmlRewardEditor.LoadAccountObject(mxmlPath);
+            JsonObject userSettings = accountObj.GetObject("UserSettingsData")!;
+            HashSet<string> seasonUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedSeasonRewards"));
+            HashSet<string> twitchUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedTwitchRewards"));
+            HashSet<string> platformUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedPlatformRewards"));
             int total = seasonUnlocked.Count + twitchUnlocked.Count + platformUnlocked.Count;
 
             return new AccountData
             {
                 AccountObject = accountObj,
                 AccountFilePath = mxmlPath,
+                IsMxmlAccountStore = true,
                 IsMxmlSource = true,
+                SpecialsUnlocked = GetUnlockedSet(userSettings.GetArray("UnlockedSpecials")),
                 SeasonUnlocked = seasonUnlocked,
                 TwitchUnlocked = twitchUnlocked,
                 PlatformUnlocked = platformUnlocked,
-                SpecialsUnlocked = specialsUnlocked,
-                StatusMessage = UiStrings.Format("account.status_loaded_mac", Path.GetFileName(mxmlPath), total),
+                StatusMessage = UiStrings.Format("account.status_loaded", total),
             };
         }
         catch (Exception ex)
         {
-            return new AccountData { ErrorMessage = UiStrings.Format("account.load_error", mxmlPath, ex.Message) };
+            return new AccountData
+            {
+                ErrorMessage = UiStrings.Format("account.load_error", mxmlPath, ex.Message),
+            };
         }
-    }
-
-    /// <summary>Adds a reward ID set as a JSON string array under the given key.</summary>
-    private static void AddRewardArray(JsonObject parent, string key, HashSet<string> values)
-    {
-        var array = new JsonArray();
-        foreach (string value in values)
-            array.Add(value);
-        parent.Set(key, array);
     }
 
     /// <summary>
@@ -1043,6 +1021,8 @@ internal static class AccountLogic
         public JsonObject? AccountObject { get; set; }
         /// <summary>The file path to the account data file.</summary>
         public string? AccountFilePath { get; set; }
+        /// <summary>Whether the JSON object is an adapter over macOS user-settings MXML.</summary>
+        public bool IsMxmlAccountStore { get; set; }
         /// <summary>Set of unlocked season reward IDs.</summary>
         public HashSet<string> SeasonUnlocked { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Set of unlocked Twitch reward IDs.</summary>
@@ -1057,7 +1037,7 @@ internal static class AccountLogic
         /// True when the account data was loaded from the macOS GcUserSettingsData.mxml
         /// file instead of accountdata.hg. Writes are routed back to the MXML file.
         /// </summary>
-        public bool IsMxmlSource { get; set; }
+        public bool IsMxmlSource { get => IsMxmlAccountStore; set => IsMxmlAccountStore = value; }
         /// <summary>A human-readable status message on successful load.</summary>
         public string? StatusMessage { get; set; }
         /// <summary>An error message if account data could not be loaded.</summary>

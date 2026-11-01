@@ -535,7 +535,7 @@ extracted texture tree to lowercase `textures/` so paths match the game referenc
 `ExtractIcons` looks up each icon in `banks/extracted/` and invokes `magick.exe` (15 second
 timeout) to write `{sanitisedId}.png` files into `Resources/images/`. Icons are emitted as
 128 px thumbnails (`-thumbnail 128x128>`), matching the editor's icon cache size, which keeps
-the asset set small and the runtime preload fast. `FindMagickExe`
+the asset set small and the runtime preload fast. The macOS app loads these assets through `AvaloniaIconProvider`. `FindMagickExe`
 locates the portable ImageMagick under `tools/imagemagick/` (or directly in `tools/`), and
 `SanitizeFilename` replaces characters that are invalid in file names.
 

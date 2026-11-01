@@ -241,25 +241,24 @@ the item database files, which together contain thousands of items.
 
 ---
 
-### IconManager
+### AvaloniaIconProvider
 
 | | |
 |---|---|
-| File | `Data/IconManager.cs` |
+| File | `UI.Avalonia/Services/AvaloniaIconProvider.cs` |
 | Purpose | Load, cache, and downscale item icon images for inventory grids |
 
-An `IDisposable` instance class initialized with the path to the icons directory
-(`Resources/images`). Icons are downscaled to a maximum dimension of 128 px on load (the
-originals are 256x256) using bilinear interpolation, saving roughly 75% memory while
-remaining sharp at the 96 px display size used in grids.
+An `IDisposable` instance class initialized with the path to the images directory. Icons are
+decoded into Avalonia bitmaps, downscaled for display, cached, and disposed without holding
+source files open.
 
 `PreloadIcons(database)` loads all database icons in parallel on background threads, capped
-at `Environment.ProcessorCount` to avoid GDI+ contention. `GetIcon(filename)` returns the
+at `Environment.ProcessorCount`. `GetIcon(filename)` returns the
 cached image or loads on demand. `GetIconForItem(itemId, database)` combines database lookup
 with icon retrieval.
 
-**Design choice:** Bilinear (not bicubic) interpolation is used because the quality
-difference is imperceptible at 128 px and bilinear is measurably faster during bulk preload.
+**Design choice:** Bitmap ownership remains entirely inside the provider so panel controls do
+not leak image handles or depend on GDI+.
 
 ---
 
@@ -700,17 +699,41 @@ code while keeping string comparison logic safe (comparisons use IDs, not displa
 
 ---
 
+### CoordinateHelper
+
+| | |
+|---|---|
+| File | `Data/CoordinateHelper.cs` |
+| Purpose | NMS galactic coordinate conversions -- portal codes, signal booster format, distance calculations |
+
+A public static class that converts between voxel coordinates, 12-character portal codes,
+and `XXXX:YYYY:ZZZZ:SSSS` signal booster format. Provides distance-to-center calculations
+and jump count estimates.
+
+| Method | Description |
+|--------|-------------|
+| `VoxelToPortalCode(x, y, z, system, planet)` | Encode as 12-char hex portal code |
+| `VoxelToSignalBooster(x, y, z, system)` | Encode as colon-separated hex |
+| `PortalCodeToVoxel(code, ...)` | Decode portal code back to voxel coordinates |
+| `GetDistanceToCenter(x, y, z)` | Straight-line distance in light-years |
+| `GetJumpsToCenter(distance, perJump)` | Estimated warp jumps needed |
+| `PortalHexToDec(code)` | Convert hex digits to decimal+1 comma-separated |
+
+Portal glyph presentation is intentionally separate from this pure coordinate math and is
+implemented by the Avalonia `GlyphRenderer` control.
+
+---
+
 ## Dependency Graph
 
 ```
-GameItemDatabase  <--  IconManager (icon filenames from items)
-                  <--  inventory panels (item lookup for pickers)
-                  <--  StarshipDatabase.LoadFromDatabase (display name fallback)
-                  <--  Catalogue/Settlement/Base/Account panels (item metadata)
+GameItemDatabase  <--  AvaloniaIconProvider (icon filenames from items)
+                  <--  InventoryGrid (item lookup for picker)
+                  <--  SettlementLogic (production item filtering)
 
-RecipeDatabase    <--  RecipePanel, CataloguePanel (recipe display)
-RewardDatabase    <--  AccountPanel (reward unlock management)
-WordDatabase      <--  Catalogue panel (known words)
+RecipeDatabase    <--  RecipeBrowserPanel (recipe display)
+
+RewardDatabase    <--  AccountLogic (reward unlock management)
 
 JsonNameMapper    <--  JsonParser (global default mapper)
                   <--  JsonObject (per-instance mapper for key translation)
@@ -729,8 +752,8 @@ CatalogueDatabase    <--  CataloguePanel (completion tabs)
 
 SpacePoiTableDatabase / SpacePoiLayoutCache <-- SpaceStationPanel
 
-TechAdjacencyDatabase <-- InventoryGridPanel (synergy border rendering)
-TechPacks             <-- InventoryGridPanel (hash-based tech lookup)
+TechAdjacencyDatabase <-- InventoryGrid (synergy border rendering)
+TechPackDatabase      <-- InventoryGrid (hash-based tech lookup)
 
 StarshipDatabase          <-- StarshipLogic (corvette optimiser sort)
 ShipCustomisationDatabase <-- StarshipPanel

@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace NMSE.IO;
 
 /// <summary>
@@ -16,6 +18,15 @@ namespace NMSE.IO;
 /// </summary>
 public static class XgsSaveManager
 {
+    private static bool IsIdentifier(string identifier) =>
+        string.Equals(identifier, ContainersIndexManager.AccountDataIdentifier, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(identifier, ContainersIndexManager.SettingsIdentifier, StringComparison.OrdinalIgnoreCase) ||
+        Regex.IsMatch(identifier, @"^Slot[1-9][0-9]*(Auto|Manual)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static bool IsLink(string path) => File.Exists(path) || Directory.Exists(path)
+        ? (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0
+        : new FileInfo(path).LinkTarget is not null;
+
 	/// <summary>Name of the save data file inside an xgs slot folder.</summary>
 	public const string DataFileName = "data";
 	/// <summary>Name of the metadata file inside an xgs slot folder.</summary>
@@ -38,7 +49,8 @@ public static class XgsSaveManager
 
 		foreach (var subDirectory in Directory.EnumerateDirectories(directory))
 		{
-			if (File.Exists(Path.Combine(subDirectory, DataFileName)))
+			if (IsIdentifier(Path.GetFileName(subDirectory)) && !IsLink(subDirectory) &&
+                File.Exists(Path.Combine(subDirectory, DataFileName)) && !IsLink(Path.Combine(subDirectory, DataFileName)))
 				return true;
 		}
 		return false;
@@ -57,8 +69,9 @@ public static class XgsSaveManager
 		foreach (var subDirectory in Directory.EnumerateDirectories(containerDirectory))
 		{
 			string identifier = Path.GetFileName(subDirectory);
-			if (ContainersIndexManager.ExtractSlotNumber(identifier) > 0
-				&& File.Exists(Path.Combine(subDirectory, DataFileName)))
+			if (IsIdentifier(identifier) && ContainersIndexManager.ExtractSlotNumber(identifier) > 0
+                && !IsLink(subDirectory) && File.Exists(Path.Combine(subDirectory, DataFileName))
+                && !IsLink(Path.Combine(subDirectory, DataFileName)))
 				return true;
 		}
 		return false;
@@ -78,11 +91,13 @@ public static class XgsSaveManager
 		foreach (var slotDirectory in Directory.EnumerateDirectories(containerDirectory))
 		{
 			string identifier = Path.GetFileName(slotDirectory);
+            if (!IsIdentifier(identifier) || IsLink(slotDirectory)) continue;
 			string dataPath = Path.Combine(slotDirectory, DataFileName);
-			if (!File.Exists(dataPath))
+			if (!File.Exists(dataPath) || IsLink(dataPath))
 				continue;
 
 			string metaPath = Path.Combine(slotDirectory, MetaFileName);
+            if (IsLink(metaPath)) continue;
 			slots[identifier] = new XboxSlotInfo
 			{
 				Identifier = identifier,
@@ -101,7 +116,12 @@ public static class XgsSaveManager
 	/// <param name="containerDirectory">The xgs container directory.</param>
 	/// <param name="identifier">The slot identifier (for example "Slot1Manual").</param>
 	public static string GetSlotDirectory(string containerDirectory, string identifier)
-		=> Path.Combine(containerDirectory, identifier);
+		{
+        if (!IsIdentifier(identifier)) throw new ArgumentException("Invalid Xbox slot identifier.", nameof(identifier));
+        string path = Path.Combine(containerDirectory, identifier);
+        if (IsLink(path)) throw new IOException("Xbox slot directories cannot be symbolic links.");
+        return path;
+    }
 
 	/// <summary>
 	/// Loads a save from an xgs slot folder.

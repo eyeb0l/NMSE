@@ -36,6 +36,60 @@ public class BaseExportLogicTests
         """;
 
     [Fact]
+    public void SidecarPaths_PreserveNestedUnixPathsSpacesAndCase()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "NMSE Base Paths " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "Base Export.nmsbase");
+        try
+        {
+            var player = BuildPlayerState(HomeBaseJson, TerrainJson);
+            var original = player.GetArray("PersistentPlayerBases")!.GetObject(0);
+            BaseExportLogic.WriteExport(player, original, path);
+            Assert.Equal(path, BaseExportLogic.ResolveBaseFilePath(path + ".TERRAIN.JSON"));
+            Assert.Equal(BaseExportLogic.TerrainSidecarStatus.Ok, BaseExportLogic.ReadTerrainSidecar(path, original).Status);
+            Assert.Equal(path + ".terrain.json", BaseExportLogic.GetTerrainSidecarPath(path));
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExportReplacingSidecarSymlink_DoesNotOverwriteItsTarget(bool dangling)
+    {
+        if (OperatingSystem.IsWindows()) return; // Creating links can require elevated privileges on Windows.
+        string directory = Path.Combine(Path.GetTempPath(), "NMSE-base-links-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "Base.nmsbase");
+        string target = Path.Combine(directory, "unrelated.json");
+        try
+        {
+            if (!dangling) File.WriteAllText(target, "preserve target");
+            File.CreateSymbolicLink(BaseExportLogic.GetTerrainSidecarPath(path), target);
+            var player = BuildPlayerState(HomeBaseJson, TerrainJson);
+            BaseExportLogic.WriteExport(player, player.GetArray("PersistentPlayerBases")!.GetObject(0), path);
+            if (dangling) Assert.False(File.Exists(target));
+            else Assert.Equal("preserve target", File.ReadAllText(target));
+            Assert.Null(new FileInfo(BaseExportLogic.GetTerrainSidecarPath(path)).LinkTarget);
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Fact]
+    public void TerrainSidecar_CannotRedirectImportWithAnEmbeddedPath()
+    {
+        string path = NewBasePath();
+        try
+        {
+            File.WriteAllText(BaseExportLogic.GetTerrainSidecarPath(path), """{"Format":"NMSETerrain","FormatVersion":1,"Path":"../../outside.json"}""");
+            Assert.Equal(BaseExportLogic.TerrainSidecarStatus.Invalid,
+                BaseExportLogic.ReadTerrainSidecar(path, JsonObject.Parse(HomeBaseJson)).Status);
+        }
+        finally { DeleteFile(path); DeleteFile(BaseExportLogic.GetTerrainSidecarPath(path)); }
+    }
+
+    [Fact]
     public void WriteExport_WritesRawBaseAndTerrainSidecar()
     {
         string basePath = NewBasePath();

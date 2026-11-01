@@ -145,40 +145,25 @@ Keys use dot-delimited hierarchical naming:
 
 ### Integration Points
 
-1. **`MainForm.LoadDatabase()`** - calls `UiStrings.SetDirectory()` with
-   `Resources/ui/lang`, and `LocalisationService.SetLangDirectory()` with
-   `Resources/json/lang`.
-2. **`MainForm.ApplyStartupLanguage()`** - invoked from `PerformStartup()` after
-   `LoadDatabase()`. Loads the saved `AppConfig.Language`, calls `UiStrings.Load(tag)` and
-   `_localisationService.LoadLanguage(tag)`, runs `ApplyLocalisation()` on the game
-   databases, then calls `ApplyUiLocalisation()`.
-3. **`MainForm.OnLanguageSelected()`** - does the same work when the user picks a
-   language from the Language menu, refreshes the loaded panels, then persists the choice
-   to `AppConfig`.
-4. **`MainForm.ApplyUiLocalisation()`** - pushes strings to:
-   - the File, Edit, Tools, Language, Theme and Help menus (Language menu items keep
-     their BCP 47 tags as text);
-   - toolbar labels on both rows, including `toolbar.backup` and the backup Browse
-     button;
-   - all 16 tab titles via the `tab.*` keys;
-   - the status bar database item count (`status.total_db_items`);
-   - 17 panel/control classes directly: `_mainStatsPanel`, `_milestonePanel`,
-     `_cataloguePanel`, `_settlementPanel`, `_byteBeatPanel`, `_accountPanel`,
-     `_recipePanel`, `_rawJsonPanel`, `_databaseSearchPanel`, `_exportConfigPanel`,
-     `_exosuitPanel`, `_companionPanel`, `_basePanel`, `_fleetPanel`, `_vehiclePanel`,
-     `_multitoolPanel` and `_shipPanel`;
-   - `NoSaveOverlay.RefreshLocalisation()` for every locked tab.
-5. **Panel cascades** - some panels forward to their children: `FleetPanel` calls
-   `ApplyUiLocalisation()` on `FreighterPanel`, `FrigatePanel` and `SquadronPanel`;
-   `MainStatsPanel` calls `MultiplayerPanel`; `BasePanel` calls its four sub-panels;
-   `CataloguePanel` calls its completion sub-panels.
-6. **Panel `ApplyUiLocalisation()` methods** - 28 panel/control classes define at least
-   one (`BasePanel` defines four, one per sub-panel). They update form labels, section
-   headers, buttons, tab sub-pages, grid column headers, context menu items,
-   filter/search placeholders and dynamic count labels (via `UiStrings.Format()`).
-7. **Status bar** - `_totalDatabaseItems` includes `UiStrings.TotalKeyCount`, and the
-   language-switch status message uses `status.language_localised` with five arguments
-   (tag, item count, reward count, word count, UI string count).
+1. **`AvaloniaResourceCatalog.InitializeAsync()`** – Sets the UI lang directory via `UiStrings.SetDirectory()`
+2. **`AvaloniaResourceCatalog.ApplyLanguage()`** – Loads UI and database localisation
+3. **`MainWindow.OnLanguageSelected()`** – Reloads strings and persisted language selection
+4. **`SaveEditorCoordinator.ApplyUiLocalisation()`** – Pushes translated strings to every registered panel
+   - Main menu items (File, Edit, Tools, Language, Help)
+   - Toolbar labels (Directory, Save Slot, File, Browse, Load, Save)
+   - Tab page titles (Player, Exosuit, Multi-tools, etc.)
+5. **Panel `ApplyUiLocalisation()` methods** – Each of the 20 panels has its own
+   `ApplyUiLocalisation()` method that updates:
+   - Form labels (e.g. "Health:", "Shield:", "Name:", stat labels)
+   - Section headers (e.g. "Player Statistics", "Song Details")
+   - Buttons (Export, Import, Generate, etc.)
+   - Tab sub-pages (General, Cargo, Technology, etc.)
+   - Grid column headers
+   - Context menu items
+   - Filter/search placeholders
+   - Dynamic count labels (via `UiStrings.Format()`)
+6. **Status bar** – UI string count is included in the `_itemCountLabel` total
+7. **Language status** – UI string count shown in language-switch status message
 
 ### Panel Label Pattern
 

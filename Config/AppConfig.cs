@@ -12,7 +12,6 @@ namespace NMSE.Config;
 /// </summary>
 public class AppConfig
 {
-    private const string ConfigFileName = "NMSE.conf";
     private static AppConfig? _instance;
     private readonly Dictionary<string, string> _properties = new();
     private string? _configPath;
@@ -119,9 +118,9 @@ public class AppConfig
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-    public string? Theme
+    public string Theme
     {
-        get => GetProperty("Theme");
+        get => GetProperty("Theme") ?? "System";
         set => SetProperty("Theme", value);
     }
 
@@ -315,34 +314,22 @@ public class AppConfig
 
     /// <summary>Creates the config directory and loads settings from disk if available.</summary>
     /// <remarks>
-    /// The configuration file is stored alongside the application executable so it survives
-    /// application updates (which copy new files but never delete existing ones in the app
-    /// directory). A one-time migration from the old <c>%AppData%\NMSE\NMSE.conf</c> location
-    /// is performed the first time this method runs with the new path.
+    /// On Windows the configuration file remains beside the executable for
+    /// backwards compatibility. On macOS and Linux it is stored in the
+    /// platform's user-writable application data directory.
     /// </remarks>
-    public void Initialize()
-    {
-        string appDir = AppContext.BaseDirectory;
-        _configPath = Path.Combine(appDir, ConfigFileName);
+    public void Initialize() => Initialize(ApplicationPaths.Current);
 
-        // One-time migration: copy the old config from %AppData%\NMSE\ if the new
-        // path does not yet exist but the old one does.
-        if (!File.Exists(_configPath))
-        {
-            try
-            {
-                string oldConfigDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "NMSE");
-                string oldConfigPath = Path.Combine(oldConfigDir, ConfigFileName);
-                if (File.Exists(oldConfigPath))
-                    File.Copy(oldConfigPath, _configPath, overwrite: false);
-            }
-            catch
-            {
-                // Migration is best-effort; start fresh if it fails.
-            }
-        }
+    /// <summary>
+    /// Initializes configuration using an explicit path layout. This overload
+    /// supports alternate desktop hosts and deterministic characterization tests.
+    /// </summary>
+    public void Initialize(ApplicationPaths paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        paths.PrepareUserData();
+        _configPath = paths.ConfigurationFilePath;
 
         if (File.Exists(_configPath))
             Load();

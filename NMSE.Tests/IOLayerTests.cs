@@ -553,6 +553,75 @@ public class IOLayerTests
     }
 
     [Fact]
+    public void SaveFileManager_BackupSaveDirectory_SwitchIncludesPlatformPayloads()
+    {
+        string tmpDir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(tmpDir, "manifest01.dat"), "manifest");
+            File.WriteAllText(Path.Combine(tmpDir, "savedata01.bin"), "switch save");
+
+            string zipPath = Path.Combine(Path.GetTempPath(), $"nmse_backup_test_{Guid.NewGuid():N}.zip");
+            try
+            {
+                using var zip = CreateBackupZip(tmpDir, zipPath);
+
+                var entryNames = zip.Entries.Select(e => e.FullName).ToList();
+                Assert.Contains(entryNames, e => e.Equals("manifest01.dat", StringComparison.OrdinalIgnoreCase));
+                Assert.Contains(entryNames, e => e.Equals("savedata01.bin", StringComparison.OrdinalIgnoreCase));
+            }
+            finally
+            {
+                try { File.Delete(zipPath); } catch { }
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void SaveFileManager_BackupSaveDirectory_SkipsSymbolicLinksOutsideRoot()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        string tmpDir = CreateTempDir();
+        string outsideDir = CreateTempDir();
+        try
+        {
+            File.WriteAllText(Path.Combine(tmpDir, "save.hg"), "local save");
+            File.WriteAllText(Path.Combine(outsideDir, "secret.hg"), "outside data");
+            Directory.CreateSymbolicLink(Path.Combine(tmpDir, "linked-directory"), outsideDir);
+            File.CreateSymbolicLink(
+                Path.Combine(tmpDir, "linked-file.hg"),
+                Path.Combine(outsideDir, "secret.hg"));
+            Directory.CreateSymbolicLink(Path.Combine(tmpDir, "cycle"), tmpDir);
+
+            string zipPath = Path.Combine(Path.GetTempPath(), $"nmse_backup_test_{Guid.NewGuid():N}.zip");
+            try
+            {
+                using var zip = CreateBackupZip(tmpDir, zipPath);
+                string[] entryNames = zip.Entries.Select(entry => entry.FullName).ToArray();
+
+                Assert.Contains("save.hg", entryNames);
+                Assert.DoesNotContain(entryNames, name => name.Contains("linked", StringComparison.Ordinal));
+                Assert.DoesNotContain(entryNames, name => name.Contains("secret", StringComparison.Ordinal));
+                Assert.DoesNotContain(entryNames, name => name.Contains("cycle", StringComparison.Ordinal));
+            }
+            finally
+            {
+                try { File.Delete(zipPath); } catch { }
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+            try { Directory.Delete(outsideDir, true); } catch { }
+        }
+    }
+
+    [Fact]
     public void SaveFileManager_RestoreFileFromBackup_FindsNestedEntry()
     {
         string tmpDir = CreateTempDir();
@@ -605,6 +674,36 @@ public class IOLayerTests
         finally
         {
             try { Directory.Delete(tmpDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void SaveFileManager_RestoreBackupToDirectory_SkipsSymbolicLinkEscape()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        string tmpDir = CreateTempDir();
+        string outsideDir = CreateTempDir();
+        try
+        {
+            string source = WriteTempFile(tmpDir, "source.hg", "must stay inside");
+            string zipPath = Path.Combine(tmpDir, "backup.zip");
+            using (var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+                zip.CreateEntryFromFile(source, "linked/escape.hg");
+
+            string destination = Path.Combine(tmpDir, "restore");
+            Directory.CreateDirectory(destination);
+            Directory.CreateSymbolicLink(Path.Combine(destination, "linked"), outsideDir);
+
+            List<string> written = SaveFileManager.RestoreBackupToDirectory(zipPath, destination);
+
+            Assert.Empty(written);
+            Assert.False(File.Exists(Path.Combine(outsideDir, "escape.hg")));
+        }
+        finally
+        {
+            try { Directory.Delete(tmpDir, true); } catch { }
+            try { Directory.Delete(outsideDir, true); } catch { }
         }
     }
 

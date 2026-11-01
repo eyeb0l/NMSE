@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="NMSE.Tests/NMSE.Tests.csproj" />
+  <Project Path="NMSE.Avalonia.Tests/NMSE.Avalonia.Tests.csproj" />
+  <Project Path="NMSE.MacUpdater.Tests/NMSE.MacUpdater.Tests.csproj" />
   <Project Path="NMSE.csproj" />
   <Project Path="NMSE.Extractor/NMSE.Extractor.csproj" />
   <Project Path="NMSE.Extractor.Tests/NMSE.Extractor.Tests.csproj" />

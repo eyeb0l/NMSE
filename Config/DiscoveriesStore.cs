@@ -6,8 +6,8 @@ using NMSE.Core;
 namespace NMSE.Config;
 
 /// <summary>
-/// Loads and saves the editor's long-term data files from the Discoveries folder next
-/// to the application executable. Each data set is a separate JSON file with its own
+/// Loads and saves the editor's long-term data files from the writable user data
+/// Discoveries folder. Each data set is a separate JSON file with its own
 /// format version, so features such as the space POI layout memory, and future
 /// cross-save libraries (discoveries, ships, multitools, ...) can evolve independently.
 /// Writes are atomic (temporary file then replace) and unreadable files are backed up
@@ -15,7 +15,7 @@ namespace NMSE.Config;
 /// </summary>
 internal static class DiscoveriesStore
 {
-    /// <summary>Folder name used next to the application executable.</summary>
+    /// <summary>Folder name within the writable application data directory.</summary>
     public const string FolderName = "Discoveries";
 
     private static readonly object Sync = new();
@@ -25,7 +25,7 @@ internal static class DiscoveriesStore
 
     /// <summary>Directory holding the data files.</summary>
     public static string DataDirectory =>
-        _directoryOverride ?? Path.Combine(AppContext.BaseDirectory, FolderName);
+        _directoryOverride ?? Path.Combine(ApplicationPaths.Current.UserDataDirectory, FolderName);
 
     /// <summary>
     /// Overrides the data folder and forgets all cached files. Pass null to restore the

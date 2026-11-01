@@ -1,37 +1,58 @@
-# NMSE macOS Scripts
+# Native macOS packaging
 
-Scripts and configuration files for running NMSE on macOS via Wine.
+These scripts package the self-contained Avalonia build. They do not install or invoke
+Wine, Whisky, CrossOver, or a separately installed .NET runtime.
 
-## Contents
+## Build locally
 
-| File | Description |
-|------|-------------|
-| `build-dmg.sh` | CI script - builds a macOS DMG containing NMSE.app with a Wine launcher |
-| `README.md` | This file |
+```bash
+./scripts/build.sh publish macos                  # Both architectures
+./scripts/build.sh publish osx-arm64 --smoke-test # Apple Silicon only
+./scripts/build.sh publish osx-x64                # Intel only
+```
 
-## macOS Requirements
+Run these commands from the repository root on a Mac. They restore, test, publish,
+package and validate, writing versioned ZIPs and DMGs to `Build/artifacts/`. The shared
+[build guide](../../docs/dev/building.md) covers prerequisites and output options.
 
-NMSE is a Windows WinForms application. On macOS it runs through a Wine compatibility
-layer. Supported options:
+For an existing self-contained publish, the low-level packager remains available:
 
-- **Gcenx Wine Builds** (free, recommended) - current Wine with Apple Silicon and Intel support.
-- **CrossOver 26 or later** (paid, CodeWeavers) - current Wine base with commercial support.
+```bash
+scripts/macos/build-dmg.sh /path/to/publish osx-arm64 /path/to/artifacts
+```
 
-Whisky and Homebrew Wine builds are not supported: Whisky is no longer maintained and
-both lag behind the Wine version NMSE needs.
+Its legacy default output directory is `Build/macos/`; the shared publish command
+always passes its artifact directory explicitly. Both paths validate the app's bundle
+identifier, minimum OS, architecture, signature, resources, ZIP paths and DMG integrity.
 
-**Setup:** follow the [Gcenx Wine Builds Guide](../../docs/dev/gcenx-macos-guide.md) or
-the [CrossOver macOS Guide](../../docs/dev/crossover-macos-guide.md).
+The runtime payload is copied to `NMSE.app/Contents/MacOS`; the large application data
+tree is copied to `NMSE.app/Contents/Resources`. `NMSE_RESOURCE_DIR` may override the
+resource source. `NMSE_EXECUTABLE` may override executable auto-detection.
 
-## NMS Save File Location on macOS
+## Signing and notarization
 
-| Installation | Path |
-|-------------|------|
-| Steam (native macOS) | `~/Library/Application Support/HelloGames/NMS/<profile>/` |
-| Steam (via Wine) | Inside the Wine prefix under `drive_c/users/<user>/AppData/Roaming/HelloGames/NMS/` |
+With no signing environment, nested runtime files and the app are ad-hoc signed for CI and
+local testing. For direct distribution, import a Developer ID Application certificate
+and provide:
 
-## Full Documentation
+```bash
+export MACOS_SIGN_IDENTITY='Developer ID Application: Example (TEAMID)'
+export MACOS_NOTARY_PROFILE='nmse-notary'
+xcrun notarytool store-credentials "$MACOS_NOTARY_PROFILE" \
+  --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD"
+```
 
-- [Gcenx Wine Builds Guide](../../docs/dev/gcenx-macos-guide.md) - free, recommended setup for macOS
-- [CrossOver macOS Guide](../../docs/dev/crossover-macos-guide.md) - paid, supported alternative
-- [Wine Linux Guide](../../docs/dev/wine-linux-guide.md) - Linux equivalent (different Wine stack)
+The builder signs nested runtime files before the app, enables hardened runtime for
+Developer ID builds, notarizes and staples the app, then signs, notarizes, and staples
+the DMG. Gatekeeper assessment becomes a required validation gate when notarization is
+requested. NMSE is intentionally not sandboxed. Set `MACOS_ENTITLEMENTS` only when a
+reviewed entitlement file is required; the packaging scripts do not invent entitlements.
+
+Useful independent checks:
+
+```bash
+scripts/macos/validate-bundle.sh /path/to/NMSE.app osx-arm64 /path/to/NMSE.dmg /path/to/NMSE.zip
+codesign -dvvv --entitlements :- /path/to/NMSE.app
+spctl --assess --type execute --verbose=2 /path/to/NMSE.app
+xcrun stapler validate /path/to/NMSE.app
+```

@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:raw="using:NMSE.UI.Avalonia.Panels.RawJson"
+             x:Class="NMSE.UI.Avalonia.Panels.RawJson.RawJsonPanel"
+             x:CompileBindings="True">
+  <Grid Margin="8" RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" RowSpacing="6">
+    <TextBlock x:Name="TitleText" Grid.Row="0" Text="Raw JSON Editor"
+               FontSize="20" FontWeight="SemiBold" />
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Disabled">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <ComboBox x:Name="DocumentSelector" Width="180"
+                  SelectionChanged="OnDocumentSelectionChanged" />
+        <Separator Width="1" Margin="4,2" />
+        <Button x:Name="ExportButton" Content="Export" Click="OnExportDocument" />
+        <Button x:Name="ImportButton" Content="Import" Click="OnImportDocument" />
+        <Button x:Name="DiffButton" Content="Show Changes" Click="OnShowDiff" />
+        <Separator Width="1" Margin="4,2" />
+        <TextBox x:Name="SearchBox" Width="240" PlaceholderText="Search keys or values..."
+                 KeyDown="OnSearchBoxKeyDown" />
+        <Button x:Name="ClearSearchButton" Content="X" Click="OnClearSearch" />
+        <Button x:Name="PreviousSearchButton" Content="◀" Click="OnPreviousSearch" />
+        <Button x:Name="SearchButton" Content="Find" Click="OnSearch" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto"
+                  VerticalScrollBarVisibility="Disabled">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button x:Name="TreeModeButton" Content="Tree View" Click="OnTreeMode" />
+        <Button x:Name="TextModeButton" Content="Text View" Click="OnTextMode" />
+        <Button x:Name="SplitModeButton" Content="Split View" Click="OnSplitMode" />
+        <Separator Width="1" Margin="4,2" />
+        <Button x:Name="ExpandButton" Content="Expand All" Click="OnExpandAll" />
+        <Button x:Name="CollapseButton" Content="Collapse All" Click="OnCollapseAll" />
+        <Button x:Name="FormatButton" Content="Format" Click="OnFormat" />
+        <CheckBox x:Name="IsolateCheck" Content="Isolate Node" IsCheckedChanged="OnIsolatePreferenceChanged" />
+        <Button x:Name="ValidateButton" Content="Validate" Click="OnValidate" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
+      <TextBlock x:Name="BookmarksLabel" VerticalAlignment="Center" />
+      <ComboBox x:Name="BookmarkSelector" Width="300" SelectionChanged="OnBookmarkSelected" />
+      <Button x:Name="AddBookmarkButton" Click="OnAddBookmark" />
+      <Button x:Name="ManageBookmarksButton" Click="OnManageBookmarks" />
+    </StackPanel>
+
+    <StackPanel x:Name="BreadcrumbPanel" Grid.Row="4" Orientation="Horizontal" Spacing="3" />
+
+    <Grid Grid.Row="5">
+      <TreeView x:Name="Tree" SelectionChanged="OnTreeSelectionChanged"
+                KeyDown="OnTreeKeyDown" DoubleTapped="OnTreeDoubleTapped"
+                PointerPressed="OnTreePointerPressed"
+                PointerMoved="OnTreePointerMoved"
+                PointerReleased="OnTreePointerReleased">
+        <TreeView.Styles>
+          <Style Selector="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
+          </Style>
+        </TreeView.Styles>
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate x:DataType="raw:JsonTreeNode" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding DisplayText}" FontFamily="Menlo, Cascadia Mono, monospace"
+                       TextTrimming="CharacterEllipsis" />
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+        <TreeView.ContextMenu>
+          <ContextMenu Opening="OnContextMenuOpening">
+            <MenuItem x:Name="EditMenuItem" Header="Edit Value" Click="OnEditNode" />
+            <MenuItem x:Name="IsolateMenuItem" Header="Isolate Node" Click="OnIsolateNode" />
+            <Separator />
+            <MenuItem x:Name="AddPropertyMenuItem" Header="Add Property" Click="OnAddProperty" />
+            <MenuItem x:Name="AddArrayItemMenuItem" Header="Add Array Item" Click="OnAddArrayItem" />
+            <Separator />
+            <MenuItem x:Name="DeleteMenuItem" Header="Delete" Click="OnDeleteNode" />
+            <Separator />
+            <MenuItem x:Name="CopyKeyMenuItem" Header="Copy Key" Click="OnCopyKey" />
+            <MenuItem x:Name="CopyValueMenuItem" Header="Copy Value" Click="OnCopyValue" />
+            <MenuItem x:Name="CopyPathMenuItem" Header="Copy Path" Click="OnCopyPath" />
+            <Separator />
+            <MenuItem x:Name="ExportNodeMenuItem" Header="Export Node..." Click="OnExportNode" />
+            <MenuItem x:Name="ImportNodeMenuItem" Header="Import Node..." Click="OnImportNode" />
+          </ContextMenu>
+        </TreeView.ContextMenu>
+      </TreeView>
+
+      <Grid x:Name="TextView" IsVisible="False" ColumnDefinitions="3*,2*" ColumnSpacing="8">
+        <TextBox x:Name="TextEditor" Grid.Column="0" AcceptsReturn="True" AcceptsTab="True"
+                 TextWrapping="NoWrap" FontFamily="Menlo, Cascadia Mono, monospace"
+                 FontSize="13" TextChanged="OnTextChanged" KeyDown="OnTextEditorKeyDown" />
+        <Border Grid.Column="1" BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="1" CornerRadius="4">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock x:Name="TextSyntaxTitle" Margin="8,5" Text="Text View" FontWeight="SemiBold" />
+            <raw:JsonSyntaxView x:Name="TextSyntaxPreview" Grid.Row="1" />
+          </Grid>
+        </Border>
+      </Grid>
+
+      <Grid x:Name="SplitView" IsVisible="False" ColumnDefinitions="2*,3*,2*" ColumnSpacing="8">
+        <TreeView x:Name="SplitTree" Grid.Column="0" SelectionChanged="OnSplitTreeSelectionChanged"
+                  KeyDown="OnTreeKeyDown" DoubleTapped="OnTreeDoubleTapped">
+          <TreeView.Styles>
+            <Style Selector="TreeViewItem">
+              <Setter Property="IsExpanded" Value="{ReflectionBinding IsExpanded, Mode=TwoWay}" />
+            </Style>
+          </TreeView.Styles>
+          <TreeView.ItemTemplate>
+            <TreeDataTemplate x:DataType="raw:JsonTreeNode" ItemsSource="{Binding Children}">
+              <TextBlock Text="{Binding DisplayText}" FontFamily="Menlo, Cascadia Mono, monospace"
+                         TextTrimming="CharacterEllipsis" />
+            </TreeDataTemplate>
+          </TreeView.ItemTemplate>
+          <TreeView.ContextMenu>
+            <ContextMenu Opening="OnContextMenuOpening">
+              <MenuItem x:Name="SplitEditMenuItem" Header="Edit Value" Click="OnEditNode" />
+              <MenuItem x:Name="SplitIsolateMenuItem" Header="Isolate Node" Click="OnIsolateNode" />
+              <Separator />
+              <MenuItem x:Name="SplitAddPropertyMenuItem" Header="Add Property" Click="OnAddProperty" />
+              <MenuItem x:Name="SplitAddArrayItemMenuItem" Header="Add Array Item" Click="OnAddArrayItem" />
+              <Separator />
+              <MenuItem x:Name="SplitDeleteMenuItem" Header="Delete" Click="OnDeleteNode" />
+              <Separator />
+              <MenuItem x:Name="SplitCopyKeyMenuItem" Header="Copy Key" Click="OnCopyKey" />
+              <MenuItem x:Name="SplitCopyValueMenuItem" Header="Copy Value" Click="OnCopyValue" />
+              <MenuItem x:Name="SplitCopyPathMenuItem" Header="Copy Path" Click="OnCopyPath" />
+              <Separator />
+              <MenuItem x:Name="SplitExportNodeMenuItem" Header="Export Node..." Click="OnExportNode" />
+              <MenuItem x:Name="SplitImportNodeMenuItem" Header="Import Node..." Click="OnImportNode" />
+            </ContextMenu>
+          </TreeView.ContextMenu>
+        </TreeView>
+        <TextBox x:Name="SplitTextEditor" Grid.Column="1" AcceptsReturn="True" AcceptsTab="True"
+                 TextWrapping="NoWrap" FontFamily="Menlo, Cascadia Mono, monospace"
+                 FontSize="13" TextChanged="OnSplitTextChanged" KeyDown="OnTextEditorKeyDown" />
+        <Border Grid.Column="2" BorderBrush="{DynamicResource ThemeBorderLowBrush}"
+                BorderThickness="1" CornerRadius="4">
+          <Grid RowDefinitions="Auto,*">
+            <TextBlock x:Name="SplitSyntaxTitle" Margin="8,5" Text="Text View" FontWeight="SemiBold" />
+            <raw:JsonSyntaxView x:Name="SplitSyntaxPreview" Grid.Row="1" />
+          </Grid>
+        </Border>
+      </Grid>
+    </Grid>
+
+    <Border Grid.Row="6" Padding="8,5" CornerRadius="4"
+            Background="{DynamicResource ThemeControlLowBrush}">
+      <TextBlock x:Name="StatusText" />
+    </Border>
+  </Grid>
+</UserControl>
