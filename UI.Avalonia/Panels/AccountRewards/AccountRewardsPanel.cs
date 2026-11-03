@@ -273,6 +273,9 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             _resources.Items,
             _productIds);
 
+        _originalSeasonRedeemed = new HashSet<string>(season.Where(row => row.Redeemed).Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
+        _originalTwitchRedeemed = new HashSet<string>(twitch.Where(row => row.Redeemed).Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
+        _originalPlatformRedeemed = BuildPlatformRedeemedSet(saveData);
         DataModified?.Invoke(this, EventArgs.Empty);
     }
 
@@ -584,7 +587,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             await _desktop.ShowInfoAsync(UiStrings.Get("account.consistency_check"), UiStrings.Get("account.consistency_no_save"));
             return;
         }
-        List<AccountLogic.ConsistencyIssue> issues = AccountLogic.CheckConsistencyStructured(_currentSaveData, _resources.Items);
+        List<AccountLogic.ConsistencyIssue> issues = AccountLogic.CheckConsistencyStructured(_currentSaveData, _resources.Items,
+            _accountData?.GetObject("UserSettingsData") ?? _accountData);
         if (issues.Count == 0)
         {
             await _desktop.ShowInfoAsync(UiStrings.Get("account.consistency_check"), UiStrings.Get("account.consistency_ok"));

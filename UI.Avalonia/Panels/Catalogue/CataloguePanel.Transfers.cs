@@ -49,9 +49,9 @@ public sealed partial class CataloguePanel
         var root = new JsonObject();
         switch (kind)
         {
-            case CatalogueTransferKind.Technologies: root.Set("KnownTechnologies", StringArray(_techRows.Select(row => row.Id))); break;
-            case CatalogueTransferKind.Products: root.Set("KnownProducts", StringArray(_productRows.Select(row => row.Id))); break;
-            case CatalogueTransferKind.Specials: root.Set("KnownSpecials", StringArray(_specialRows.Select(row => row.Id))); break;
+            case CatalogueTransferKind.Technologies: root.Set("KnownTechnologies", StringArray(_techRows.Where(row => row.Known == true).Select(row => row.Id))); break;
+            case CatalogueTransferKind.Products: root.Set("KnownProducts", StringArray(_productRows.Where(row => row.Known == true).Select(row => row.Id))); break;
+            case CatalogueTransferKind.Specials: root.Set("KnownSpecials", StringArray(_specialRows.Where(row => row.Known == true).Select(row => row.Id))); break;
             case CatalogueTransferKind.Words: root.Set("KnownWords", StringArray(_knownWordGroups is null ? [] : CatalogueLogic.CollectKnownWordIds(_knownWordGroups, _words.Words))); break;
             case CatalogueTransferKind.Glyphs:
             {
@@ -94,9 +94,9 @@ public sealed partial class CataloguePanel
             JsonObject imported = JsonObject.Parse(content.JsonText);
             int affected = kind switch
             {
-                CatalogueTransferKind.Technologies => ImportItems(imported, _techRows, _visibleTechRows, _techFilter.Text),
-                CatalogueTransferKind.Products => ImportItems(imported, _productRows, _visibleProductRows, _productFilter.Text),
-                CatalogueTransferKind.Specials => ImportItems(imported, _specialRows, _visibleSpecialRows, _specialFilter.Text),
+                CatalogueTransferKind.Technologies => ImportItems(imported, CatalogueTransferKind.Technologies),
+                CatalogueTransferKind.Products => ImportItems(imported, CatalogueTransferKind.Products),
+                CatalogueTransferKind.Specials => ImportItems(imported, CatalogueTransferKind.Specials),
                 CatalogueTransferKind.Words => ImportWords(imported),
                 CatalogueTransferKind.Glyphs => ImportGlyphs(imported),
                 CatalogueTransferKind.Locations => ImportLocations(imported),
@@ -104,7 +104,9 @@ public sealed partial class CataloguePanel
                 CatalogueTransferKind.Recipes => ImportRecipes(imported),
                 _ => 0
             };
-            if (affected > 0 || kind is CatalogueTransferKind.Glyphs or CatalogueTransferKind.Fish)
+            if (kind is CatalogueTransferKind.Technologies or CatalogueTransferKind.Products or CatalogueTransferKind.Specials)
+                ItemStateChanged(); // Importing a known item can still restore account Seen state.
+            else if (affected > 0 || kind is CatalogueTransferKind.Glyphs or CatalogueTransferKind.Fish)
                 RaiseModified();
             await ShowMessageAsync(UiStrings.Get("discovery.import_title"),
                 kind switch
@@ -130,24 +132,19 @@ public sealed partial class CataloguePanel
         return null;
     }
 
-    private int ImportItems(JsonObject imported,
-        ObservableCollection<CatalogueItemRow> rows,
-        ObservableCollection<CatalogueItemRow> visible,
-        string? filter)
+    private int ImportItems(JsonObject imported, CatalogueTransferKind kind)
     {
         JsonArray? array = FirstArray(imported);
-        if (array == null) return 0;
-        int added = 0;
-        var existing = rows.Select(row => row.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (array == null || !_itemCatalogs.TryGetValue(kind, out var catalog)) return 0;
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < array.Length; i++)
         {
-            string id;
-            try { id = CatalogueLogic.StripCaretPrefix(array.GetString(i) ?? string.Empty); } catch { continue; }
-            if (id.Length == 0 || !existing.Add(id)) continue;
-            rows.Add(CreateItemRow(id, useSubtitle: false));
-            added++;
+            try { ids.Add(CatalogueLogic.StripCaretPrefix(array.GetString(i) ?? string.Empty)); }
+            catch { /* Ignore malformed entries, matching discovery imports. */ }
         }
-        ApplyItemFilter(rows, visible, filter);
+        int added = 0;
+        foreach (var entry in catalog.Entries.Where(entry => ids.Contains(entry.Id)))
+            if (catalog.SetKnown(entry, true)) added++;
         return added;
     }
 
@@ -258,6 +255,11 @@ public sealed partial class CataloguePanel
             grid.Columns[1].Header = UiStrings.Get("discovery.col_name");
             grid.Columns[2].Header = UiStrings.Get("discovery.col_category");
             grid.Columns[3].Header = UiStrings.Get("discovery.col_id");
+            grid.Columns[4].Header = UiStrings.Get("discovery.col_description");
+            grid.Columns[5].Header = UiStrings.Get("discovery.col_expedition");
+            grid.Columns[6].Header = UiStrings.Get("discovery.col_catalogue");
+            grid.Columns[7].Header = UiStrings.Get("discovery.col_known");
+            grid.Columns[8].Header = UiStrings.Get("discovery.col_seen");
         }
         _wordGrid.Columns[0].Header = UiStrings.Get("discovery.col_word");
         _wordGrid.Columns[1].Header = UiStrings.Get("discovery.col_word_id");

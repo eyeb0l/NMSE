@@ -7,12 +7,50 @@ using NMSE.Models;
 
 namespace NMSE.UI.Avalonia.Panels.Catalogue;
 
-public sealed class CatalogueItemRow
+public sealed class CatalogueItemRow : INotifyPropertyChanged
 {
-    public Bitmap? Icon { get; init; }
-    public required string Name { get; init; }
-    public required string Category { get; init; }
-    public required string Id { get; init; }
+    private readonly NMSE.Core.CatalogueItemCatalog _catalog;
+    private readonly Action _changed;
+    internal NMSE.Core.CatalogueItemEntry Entry { get; }
+
+    internal CatalogueItemRow(NMSE.Core.CatalogueItemCatalog catalog, NMSE.Core.CatalogueItemEntry entry, Bitmap? icon, Action changed)
+    {
+        _catalog = catalog;
+        Entry = entry;
+        Icon = icon;
+        _changed = changed;
+    }
+
+    public Bitmap? Icon { get; }
+    public string Name => Entry.Item?.Name ?? Entry.Id;
+    public string Category => Entry.Category;
+    public string Id => Entry.Id;
+    public string Description => Entry.Item?.Description ?? string.Empty;
+    public string Expedition => Entry.ExpeditionNumber?.ToString(CultureInfo.InvariantCulture) ?? "-";
+    public bool IsCatalogue => Entry.IsCatalogue;
+    public string Catalogue => IsCatalogue ? "Y" : "N";
+    public bool CanAddKnown => Entry.CanAddKnown;
+    public bool CanEditKnown => CanAddKnown || Known != false;
+    public bool HasAccount => _catalog.HasAccount;
+    public bool? Known
+    {
+        get => _catalog.IsKnown(Entry) ? true : _catalog.IsPartiallyKnown(Entry) ? null : false;
+        set
+        {
+            if (value == Known || value == null || (value == true && !CanAddKnown)) return;
+            // The single-item API reports full-state changes only; partial removal
+            // must still refresh the view and mark the document modified.
+            _catalog.SetKnown(Entry, value == true);
+            _changed();
+        }
+    }
+    public bool Seen
+    {
+        get => _catalog.IsSeen(Entry);
+        set { if (HasAccount && _catalog.SetSeen(Entry, value)) _changed(); }
+    }
+    public event PropertyChangedEventHandler? PropertyChanged;
+    internal void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
 }
 
 public sealed class CatalogueWordRow : INotifyPropertyChanged
