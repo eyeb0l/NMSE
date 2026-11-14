@@ -124,6 +124,76 @@ public class BaseExportLogicTests
         }
     }
 
+    [Theory]
+    [InlineData("0x1234", 2, 10)]
+    [InlineData("0x9999", 1, 99)]
+    public void WriteExport_WithUnusedTerrainPool_ExportsOnlySelectedBuffers(
+        string address, int expectedCount, int firstEdit)
+    {
+        string basePath = NewBasePath();
+        string sidecarPath = BaseExportLogic.GetTerrainSidecarPath(basePath);
+        try
+        {
+            var player = BuildPlayerState(HomeBaseJson, TerrainJson);
+            var edits = player.GetObject("TerrainEditData")!.GetArray("Edits")!;
+            while (edits.Length < 30_000)
+                edits.Add(0);
+            var baseObject = player.GetArray("PersistentPlayerBases")!.GetObject(0);
+            baseObject.Set("GalacticAddress", address);
+
+            var result = BaseExportLogic.WriteExport(player, baseObject, basePath);
+
+            Assert.Equal(1, result.TerrainBuffers);
+            var sidecar = BaseExportLogic.ReadTerrainSidecar(basePath, baseObject);
+            Assert.Equal(BaseExportLogic.TerrainSidecarStatus.Ok, sidecar.Status);
+            var exported = sidecar.TerrainEditData!;
+            Assert.Equal(expectedCount, exported.GetArray("BufferSizes")!.GetInt(0));
+            Assert.Equal(expectedCount, exported.GetArray("Edits")!.Length);
+            for (int i = 0; i < expectedCount; i++)
+                Assert.Equal(firstEdit + i, exported.GetArray("Edits")!.GetInt(i));
+            Assert.Equal(30_000, edits.Length);
+        }
+        finally
+        {
+            DeleteFile(basePath);
+            DeleteFile(sidecarPath);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1, 1)]
+    [InlineData(2, 2)]
+    public void ExtractTerrain_InvalidBufferSizes_AreRejected(int firstSize, int secondSize)
+    {
+        var player = BuildPlayerState(HomeBaseJson, TerrainJson);
+        player.GetObject("TerrainEditData")!.Set("BufferSizes", JsonArray.Parse($"[{firstSize},{secondSize}]"));
+
+        Assert.Throws<InvalidDataException>(() => BaseExportLogic.ExtractTerrainForBase(
+            player, player.GetArray("PersistentPlayerBases")!.GetObject(0)));
+    }
+
+    [Fact]
+    public void ImportAsNew_WithUnusedTerrainPool_ImportsOnlyUsedEdits()
+    {
+        var terrain = JsonObject.Parse("""
+            { "GalacticAddresses": [ "0x1234" ], "BufferSizes": [ 2 ], "Edits": [ 10, 11 ] }
+            """);
+        var edits = terrain.GetArray("Edits")!;
+        while (edits.Length < 30_000)
+            edits.Add(0);
+        var target = new JsonObject();
+        var payload = new BaseExportLogic.ExportPayload(JsonObject.Parse(HomeBaseJson), terrain);
+
+        var result = BaseExportLogic.ImportAsNew(target, payload);
+
+        Assert.Equal(1, result.TerrainBuffers);
+        var imported = target.GetObject("TerrainEditData")!;
+        Assert.Equal(2, imported.GetArray("BufferSizes")!.GetInt(0));
+        Assert.Equal(2, imported.GetArray("Edits")!.Length);
+        Assert.Equal(10, imported.GetArray("Edits")!.GetInt(0));
+        Assert.Equal(11, imported.GetArray("Edits")!.GetInt(1));
+    }
+
     [Fact]
     public void WriteExport_WithoutTerrain_RemovesStaleSidecar()
     {
