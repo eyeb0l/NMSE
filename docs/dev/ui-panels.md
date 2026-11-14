@@ -62,6 +62,8 @@ inventory transfers and companion egg placement while leaving unloaded panels de
   completion sets. Account seen lists are updated alongside save completion.
 - Account Rewards passes account settings into consistency checks, highlights ambiguous
   unlocked-but-not-redeemed entries, and refreshes redeemed snapshots after each save.
+  Entitlement unlock and redemption writes apply only explicit field edits, preserving
+  later Catalogue changes when Account Rewards was already loaded.
 - Milestone labels inherit Avalonia theme resources and remain theme-aware during live
   localisation; the upstream WinForms theme-tree reapplication is unnecessary here.
 - Raw JSON bookmarks use `RawJsonBookmarksLogic` and `AppConfig`. Save/account paths

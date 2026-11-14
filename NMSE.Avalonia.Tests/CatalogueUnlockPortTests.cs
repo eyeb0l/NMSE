@@ -240,6 +240,118 @@ public sealed class CatalogueUnlockPortTests
         Assert.False((bool)unlocked.GetValue(EntitlementRow())!);
     }
 
+    private static object EntitlementRow(AccountRewardsPanel rewards)
+    {
+        var tab = Field<object>(rewards, "_platformTab");
+        var rows = (IEnumerable)tab.GetType().GetProperty("AllRows")!.GetValue(tab)!;
+        return rows.Cast<object>().Single(row => (string)row.GetType().GetProperty("Id")!.GetValue(row)! == "^ENT_XO_HELMET");
+    }
+
+    private static AccountRewardsPanel LoadRewards(AvaloniaResourceCatalog resources, JsonObject save, JsonObject account)
+    {
+        resources.Items.LoadItemsFromJsonDirectory(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+        var rewards = new AccountRewardsPanel(resources, new AccountRewardsDesktopActions(
+            _ => Task.FromResult<string?>(null), (_, _) => Task.CompletedTask, (_, _) => Task.CompletedTask));
+        rewards.SetPlatform(NMSE.IO.SaveFileManager.Platform.XboxGamePass);
+        rewards.SetAccountData(account);
+        rewards.LoadData(save);
+        return rewards;
+    }
+
+    [AvaloniaFact]
+    public void VisitedAccountRewards_PreservesLaterCatalogueUnlockAcrossRepeatedSaves()
+    {
+        var (catalogue, save, account) = Create();
+        using var resources = new AvaloniaResourceCatalog();
+        var rewards = LoadRewards(resources, save, account);
+        var coordinator = new SaveEditorCoordinator();
+        coordinator.Register(8, catalogue);
+        coordinator.Register(12, rewards);
+        coordinator.BeginSession(save, 12, _ => { });
+        coordinator.Activate(8);
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+
+        coordinator.CommitLoadedPanels();
+        Assert.Contains("SPEC_XOHELMET", Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"));
+        coordinator.CommitLoadedPanels();
+
+        Assert.Contains("SPEC_XOHELMET", Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"));
+        Assert.Contains("^SPEC_XOHELMET", Values(save.GetObject("PlayerStateData")!, "KnownSpecials"));
+        rewards.SetAccountData(account);
+        var row = EntitlementRow(rewards);
+        Assert.True((bool)row.GetType().GetProperty("Unlocked")!.GetValue(row)!);
+    }
+
+    [AvaloniaFact]
+    public void ExplicitAccountUnlockEdit_CanOverrideLaterCatalogueUnlock()
+    {
+        var (catalogue, save, account) = Create();
+        using var resources = new AvaloniaResourceCatalog();
+        var rewards = LoadRewards(resources, save, account);
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+        var row = EntitlementRow(rewards);
+        var unlocked = row.GetType().GetProperty("Unlocked")!;
+        unlocked.SetValue(row, true);
+        unlocked.SetValue(row, false);
+
+        rewards.SaveData(save);
+
+        Assert.DoesNotContain(Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"), id => id.TrimStart('^') == "SPEC_XOHELMET");
+        Assert.Contains("^SPEC_XOHELMET", Values(save.GetObject("PlayerStateData")!, "KnownSpecials"));
+    }
+
+    [AvaloniaFact]
+    public void BulkAccountLock_AppliesEvenWhenCachedCheckboxIsAlreadyClear()
+    {
+        var (catalogue, save, account) = Create();
+        using var resources = new AvaloniaResourceCatalog();
+        var rewards = LoadRewards(resources, save, account);
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+        int changes = 0;
+        rewards.DataModified += (_, _) => changes++;
+
+        Invoke(rewards, "SetAll", Field<object>(rewards, "_platformTab"), false, null);
+        Assert.True(changes > 0);
+        rewards.SaveData(save);
+
+        Assert.DoesNotContain(Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"), id => id.TrimStart('^') == "SPEC_XOHELMET");
+        Assert.Contains("^SPEC_XOHELMET", Values(save.GetObject("PlayerStateData")!, "KnownSpecials"));
+    }
+
+    [AvaloniaFact]
+    public void BulkAccountUnredeem_RemovesCatalogueKnownStateWithStaleClearCheckbox()
+    {
+        var (catalogue, save, account) = Create();
+        using var resources = new AvaloniaResourceCatalog();
+        var rewards = LoadRewards(resources, save, account);
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+
+        Invoke(rewards, "SetAll", Field<object>(rewards, "_platformTab"), null, false);
+        rewards.SaveData(save);
+
+        Assert.DoesNotContain("^SPEC_XOHELMET", Values(save.GetObject("PlayerStateData")!, "KnownSpecials"));
+        Assert.Contains("SPEC_XOHELMET", Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"));
+    }
+
+    [AvaloniaFact]
+    public void ExplicitAccountRedemptionEdit_RemovesKnownStateAndPreservesAccountUnlock()
+    {
+        var (catalogue, save, account) = Create();
+        using var resources = new AvaloniaResourceCatalog();
+        var rewards = LoadRewards(resources, save, account);
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+        rewards.SaveData(save);
+        var row = EntitlementRow(rewards);
+        var redeemed = row.GetType().GetProperty("Redeemed")!;
+        redeemed.SetValue(row, true);
+        rewards.SaveData(save);
+        redeemed.SetValue(row, false);
+        rewards.SaveData(save);
+
+        Assert.DoesNotContain("^SPEC_XOHELMET", Values(save.GetObject("PlayerStateData")!, "KnownSpecials"));
+        Assert.Contains("SPEC_XOHELMET", Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"));
+    }
+
     [AvaloniaFact]
     public void RewardCanBeRedeemedAndUnredeemedAcrossSavesInOneSession()
     {
