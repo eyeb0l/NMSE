@@ -2,6 +2,7 @@ using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using NMSE.Data;
 using NMSE.Models;
 using NMSE.UI.Avalonia.Controls;
 using NMSE.UI.Avalonia.Panels.BasesStorage;
@@ -11,6 +12,55 @@ namespace NMSE.Avalonia.Tests;
 
 public sealed class BaseEditorPortTests
 {
+    [AvaloniaFact]
+    public async Task ExportBase_WithUnusedTerrainPool_WritesSelectedTerrainSidecar()
+    {
+        var save = CreateSave();
+        var player = save.GetObject("PlayerStateData")!;
+        player.Set("TerrainEditData", JsonObject.Parse("""
+            { "GalacticAddresses": [ "ABC123" ], "BufferSizes": [ 2 ], "Edits": [ 10, 11 ] }
+            """));
+        var edits = player.GetObject("TerrainEditData")!.GetArray("Edits")!;
+        while (edits.Length < 30_000)
+            edits.Add(0);
+        string directory = Path.Combine(Path.GetTempPath(), "NMSE Base Export " + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "Planet Haven.nmsbase");
+        bool exported = false;
+        try
+        {
+            var panel = new BasesEditorPanel
+            {
+                ExportAsync = (request, json, _) =>
+                {
+                    Assert.Same(player, request.BasePlayerState);
+                    typeof(BasesEditorPanel).Assembly.GetType("NMSE.Core.BaseExportLogic")!
+                        .GetMethod("WriteExport", BindingFlags.Static | BindingFlags.NonPublic)!
+                        .Invoke(null, [request.BasePlayerState, JsonObject.Parse(json), path]);
+                    exported = true;
+                    return Task.FromResult(true);
+                }
+            };
+            panel.LoadData(save);
+
+            await (Task)panel.GetType().GetMethod("ExportBaseAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(panel, null)!;
+
+            Assert.True(exported);
+            Assert.Equal(UiStrings.Get("base.export_success"), GetField<TextBlock>(panel, "_status").Text);
+            Assert.Equal("Planet Haven", JsonObject.ImportFromFile(path).GetString("Name"));
+            var sidecar = JsonObject.ImportFromFile(path + ".terrain.json");
+            Assert.Equal("NMSETerrain", sidecar.GetString("Format"));
+            var exportedTerrain = sidecar.GetObject("TerrainEditData")!;
+            Assert.Equal(2, exportedTerrain.GetArray("Edits")!.Length);
+            Assert.Equal(10, exportedTerrain.GetArray("Edits")!.GetInt(0));
+            Assert.Equal(11, exportedTerrain.GetArray("Edits")!.GetInt(1));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public void LoadData_ListsCurrentLegacyAndUnrecognisedBases()
     {
