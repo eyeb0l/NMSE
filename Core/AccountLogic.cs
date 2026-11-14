@@ -599,6 +599,8 @@ internal static class AccountLogic
     /// be present and appends newly-present managed IDs. This is required for arrays
     /// that also contain game-managed entries (e.g. account-level <c>UnlockedSpecials</c>
     /// and <c>SeenTechnologies</c>, which hold hundreds of vendor/collectable IDs).
+    /// Bare and caret-prefixed IDs compare equally; retained entries keep their stored
+    /// form and new entries use the caller's form.
     /// </summary>
     /// <param name="container">The JSON object containing the array.</param>
     /// <param name="key">The JSON key for the array.</param>
@@ -618,7 +620,7 @@ internal static class AccountLogic
         foreach (var (id, present) in rows)
         {
             if (present && !string.IsNullOrEmpty(id))
-                desiredSet.Add(id);
+                desiredSet.Add(CatalogueLogic.StripCaretPrefix(id));
         }
 
         // Build a set of all IDs managed by the caller (whether present or not).
@@ -626,7 +628,7 @@ internal static class AccountLogic
         foreach (var (id, _) in rows)
         {
             if (!string.IsNullOrEmpty(id))
-                managedIds.Add(id);
+                managedIds.Add(CatalogueLogic.StripCaretPrefix(id));
         }
 
         // Remove existing managed entries that should no longer be present, preserving
@@ -636,7 +638,8 @@ internal static class AccountLogic
             var existing = array.GetString(i);
             if (string.IsNullOrEmpty(existing)) continue;
 
-            if (managedIds.Contains(existing) && !desiredSet.Contains(existing))
+            string normalised = CatalogueLogic.StripCaretPrefix(existing);
+            if (managedIds.Contains(normalised) && !desiredSet.Contains(normalised))
                 array.RemoveAt(i);
         }
 
@@ -646,13 +649,14 @@ internal static class AccountLogic
         {
             var existing = array.GetString(i);
             if (!string.IsNullOrEmpty(existing))
-                currentSet.Add(existing);
+                currentSet.Add(CatalogueLogic.StripCaretPrefix(existing));
         }
 
         // Append any newly-present managed entries that aren't already in the array.
-        foreach (var id in desiredSet)
+        foreach (var (id, present) in rows)
         {
-            if (!currentSet.Contains(id))
+            if (present && !string.IsNullOrEmpty(id)
+                && currentSet.Add(CatalogueLogic.StripCaretPrefix(id)))
                 array.Add(id);
         }
     }
@@ -724,25 +728,38 @@ internal static class AccountLogic
     {
         /// <summary>The item ID (with caret prefix as stored in save data).</summary>
         public string Id { get; init; } = "";
+        /// <summary>The reward ID stored in Redeemed* arrays; may differ from the product ID.</summary>
+        public string RewardId { get; init; } = "";
         /// <summary>Human-readable display name for the item.</summary>
         public string Name { get; init; } = "";
         /// <summary>The array the item is currently in (e.g. "RedeemedSeasonRewards").</summary>
         public string CurrentArray { get; init; } = "";
         /// <summary>The array the item is missing from (e.g. "KnownSpecials").</summary>
         public string MissingArray { get; init; } = "";
+        /// <summary>
+        /// True when the issue may be intentional. For example, a reward can be
+        /// unlocked on the account without being redeemed in this save.
+        /// </summary>
+        public bool IsAmbiguous { get; init; }
         /// <summary>Localised description of the issue for display.</summary>
         public string Description { get; init; } = "";
     }
 
     /// <summary>
-    /// Performs a consistency check on the save data, comparing the Redeemed* arrays
-    /// against the Known* arrays to find mismatches.
-    /// Returns a list of structured issue records.
+    /// Performs a consistency check on the save data, comparing each Known* reward
+    /// entry against the Redeemed* array for its reward category. Account unlocks are
+    /// used to mark known-but-not-redeemed entries as ambiguous rather than definitely
+    /// stale. Entitlement rewards have no redeem array and are therefore not treated as
+    /// stale.
     /// </summary>
     /// <param name="saveData">The game save data object.</param>
     /// <param name="database">Optional game item database for resolving display names.</param>
+    /// <param name="userSettings">Optional account UserSettingsData for unlock context.</param>
     /// <returns>A list of consistency issues. Empty if the save is consistent.</returns>
-    internal static List<ConsistencyIssue> CheckConsistencyStructured(JsonObject saveData, GameItemDatabase? database = null)
+    internal static List<ConsistencyIssue> CheckConsistencyStructured(
+        JsonObject saveData,
+        GameItemDatabase? database = null,
+        JsonObject? userSettings = null)
     {
         var issues = new List<ConsistencyIssue>();
         var playerState = saveData.GetObject("PlayerStateData");
@@ -750,6 +767,7 @@ internal static class AccountLogic
 
         var redeemedSeason = GetUnlockedSet(playerState.GetArray("RedeemedSeasonRewards"));
         var redeemedTwitch = GetUnlockedSet(playerState.GetArray("RedeemedTwitchRewards"));
+        var redeemedPlatform = GetUnlockedSet(playerState.GetArray("RedeemedPlatformRewards"));
         var knownSpecials = GetUnlockedSet(playerState.GetArray("KnownSpecials"));
         var knownProducts = GetUnlockedSet(playerState.GetArray("KnownProducts"));
         var knownTech = GetUnlockedSet(playerState.GetArray("KnownTech"));
@@ -757,71 +775,117 @@ internal static class AccountLogic
         // Build a map from TwitchId (^TWITCH_NNN) -> caret-prefixed product ID (^EXPD_POSTER11A)
         // from the RewardDatabase. Used for KnownSpecials and KnownProducts checks which store
         // product IDs, not TwitchIds.
-        var twitchToProduct = BuildTwitchProductMap();
+        var twitchToProduct = BuildRewardToProductMap(RewardDatabase.TwitchRewards);
+        var platformToProduct = BuildRewardToProductMap(
+            RewardDatabase.PlatformRewards.Where(reward => reward.Category != "entitlement"));
 
-        // Check: redeemed season rewards should have matching Known* entries.
-        // Season reward IDs are already product IDs (no translation needed).
+        // Check: redeemed season and Twitch rewards should have matching Known* entries.
+        // Season reward IDs are already product IDs; Twitch IDs are resolved.
         CheckRedeemedAgainstKnown(issues, redeemedSeason, "RedeemedSeasonRewards",
             null, knownSpecials, knownProducts, knownTech, database);
-
-        // Check: redeemed Twitch rewards should have matching Known* entries.
-        // TwitchIds must be resolved to product IDs for KnownSpecials/KnownProducts checks.
         CheckRedeemedAgainstKnown(issues, redeemedTwitch, "RedeemedTwitchRewards",
             twitchToProduct, knownSpecials, knownProducts, knownTech, database);
 
+        // Platform rewards use RedeemedPlatformRewards. Entitlement rewards do not
+        // have a redeem array; their Known* state is the owned state.
+        CheckRedeemedAgainstKnown(issues, redeemedPlatform, "RedeemedPlatformRewards",
+            platformToProduct, knownSpecials, knownProducts, knownTech, database);
+
+        // Build the reward product map used by the reverse check. This is keyed by
+        // the product ID stored in KnownSpecials/KnownProducts/KnownTech, and records
+        // the correct Redeemed* array for each category.
+        var rewardProducts = BuildRewardProductMap();
+        var unlockedSeason = GetUnlockedSet(userSettings?.GetArray("UnlockedSeasonRewards"));
+        var unlockedTwitch = GetUnlockedSet(userSettings?.GetArray("UnlockedTwitchRewards"));
+        var unlockedPlatform = GetUnlockedSet(userSettings?.GetArray("UnlockedPlatformRewards"));
+        var unlockedSpecials = GetUnlockedSet(userSettings?.GetArray("UnlockedSpecials"));
+
+        bool IsRedeemed(RewardProductInfo reward) => reward.Category switch
+        {
+            "season" => redeemedSeason.Contains(reward.RewardId),
+            "twitch" => redeemedTwitch.Contains(reward.RewardId),
+            "platform" => redeemedPlatform.Contains(reward.RewardId),
+            _ => false,
+        };
+
+        static bool ContainsId(HashSet<string> ids, string id) =>
+            ids.Contains(id) || ids.Contains(CatalogueLogic.StripCaretPrefix(id));
+
+        bool IsCategoryUnlocked(RewardProductInfo reward) => reward.Category switch
+        {
+            "season" => ContainsId(unlockedSeason, reward.RewardId),
+            "twitch" => ContainsId(unlockedTwitch, reward.RewardId),
+            "platform" => ContainsId(unlockedPlatform, reward.RewardId),
+            _ => false,
+        };
+
         // --- Reverse / stale check ---
-        // An item is stale in KnownSpecials if it is a KNOWN REWARD product ID that is NOT
-        // currently redeemed. Quicksilver-vendor items (purchasable specials) legitimately
-        // live in KnownSpecials without a Redeemed* entry; those are NOT flagged.
-
-        // Build set of all known redeemable product IDs (from our reward database).
-        var redeemableProductIds = BuildRedeemableProductIds();
-
-        // Build set of currently-redeemed product IDs.
-        // Season rewards: reward ID == product ID.
-        // Twitch rewards: resolve TwitchId -> product ID via twitchToProduct map.
-        var redeemedProductIds = new HashSet<string>(redeemedSeason, StringComparer.OrdinalIgnoreCase);
-        foreach (var twitchId in redeemedTwitch)
+        // A known reward entry without its matching redeemed array may be stale, or it
+        // may be an intentional account unlock. Quicksilver-vendor items and other
+        // non-reward specials are not in rewardProducts and are ignored.
+        foreach (var (arrayName, known) in new[]
         {
-            if (twitchToProduct.TryGetValue(twitchId, out var pid))
-                redeemedProductIds.Add(pid);
-        }
-
-        foreach (var id in knownSpecials)
+            ("KnownSpecials", knownSpecials),
+            ("KnownProducts", knownProducts),
+            ("KnownTech", knownTech),
+        })
         {
-            // Skip if this is not a known redeemable reward product ID
-            // (it's a Quicksilver-vendor or other non-redeemable special).
-            if (!redeemableProductIds.Contains(id)) continue;
-
-            // Skip if correctly redeemed.
-            if (redeemedProductIds.Contains(id)) continue;
-
-            string lookupId = CatalogueLogic.StripCaretPrefix(id);
-            var item = database?.GetItem(lookupId);
-            string name = item?.Name ?? id;
-            issues.Add(new ConsistencyIssue
+            foreach (var id in known)
             {
-                Id = id,
-                Name = name,
-                CurrentArray = "KnownSpecials",
-                MissingArray = "RedeemedSeasonRewards",
-                Description = UiStrings.Format("account.consistency_stale_entry", name, id, "Known Specials"),
-            });
+                string key = CatalogueLogic.EnsureCaretPrefix(id);
+                if (!rewardProducts.TryGetValue(key, out var sources)) continue;
+                // A product can be earned through several categories. Any redeemed
+                // source, or an entitlement with no redemption step, legitimises it.
+                if (sources.Any(source => source.RedeemedArray == null || IsRedeemed(source))) continue;
+
+                var item = database?.GetItem(CatalogueLogic.StripCaretPrefix(id));
+                if (arrayName == "KnownSpecials" && (item == null || !IsKnownSpecialsItem(item)))
+                    continue;
+                if (arrayName == "KnownProducts" && item?.IsBuilding != true)
+                    continue;
+                if (arrayName == "KnownTech" && (item == null || IsNonTechReward(item)))
+                    continue;
+
+                // Prefer an account-unlocked source when offering a repair. Only
+                // UnlockedSpecials stores product IDs; category unlocks use reward IDs.
+                var unlockedSource = sources.FirstOrDefault(IsCategoryUnlocked);
+                var reward = unlockedSource ?? sources[0];
+                if (reward.RedeemedArray == null) continue;
+                bool isAmbiguous = userSettings != null
+                    && (unlockedSource != null || ContainsId(unlockedSpecials, key));
+                string name = item?.Name ?? id;
+                string arrayDisplay = arrayName switch
+                {
+                    "KnownSpecials" => "Known Specials",
+                    "KnownProducts" => "Known Products",
+                    _ => "Known Tech",
+                };
+                issues.Add(new ConsistencyIssue
+                {
+                    Id = id,
+                    RewardId = reward.RewardId,
+                    Name = name,
+                    CurrentArray = arrayName,
+                    MissingArray = reward.RedeemedArray,
+                    IsAmbiguous = isAmbiguous,
+                    Description = isAmbiguous
+                        ? UiStrings.Format("account.consistency_ambiguous_entry", name, id, arrayDisplay)
+                        : UiStrings.Format("account.consistency_stale_entry", name, id, arrayDisplay),
+                });
+            }
         }
 
         return issues;
     }
 
     /// <summary>
-    /// Builds a map from TwitchId (e.g. <c>^TWITCH_376</c>) to caret-prefixed product ID
-    /// (e.g. <c>^EXPD_POSTER11A</c>) using the <see cref="RewardDatabase"/>.
-    /// Used so that KnownSpecials and KnownProducts checks can look up the product ID
-    /// for twitch rewards (those arrays store product IDs, not TwitchIds).
+    /// Maps reward IDs (for example Twitch or platform redemption IDs) to the
+    /// caret-prefixed product IDs stored in Known* arrays.
     /// </summary>
-    private static Dictionary<string, string> BuildTwitchProductMap()
+    private static Dictionary<string, string> BuildRewardToProductMap(IEnumerable<RewardEntry> rewards)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var reward in RewardDatabase.TwitchRewards)
+        foreach (var reward in rewards)
         {
             if (!string.IsNullOrEmpty(reward.ProductId))
                 map[reward.Id] = CatalogueLogic.EnsureCaretPrefix(reward.ProductId);
@@ -830,38 +894,60 @@ internal static class AccountLogic
     }
 
     /// <summary>
-    /// Builds a set of all known redeemable product IDs from the <see cref="RewardDatabase"/>.
-    /// Used by the stale check to distinguish known reward product IDs (which should appear
-    /// in a Redeemed* array) from Quicksilver-vendor items (which legitimately appear only
-    /// in KnownSpecials).
+    /// A reward product and the redeemed array that should be paired with it.
     /// </summary>
-    private static HashSet<string> BuildRedeemableProductIds()
+    private sealed record RewardProductInfo(
+        string RewardId,
+        string ProductId,
+        string Category,
+        string? RedeemedArray);
+
+    /// <summary>
+    /// Builds a map keyed by the product ID stored in Known* arrays, retaining every
+    /// reward source and its matching Redeemed* array. Entitlements have no redeem
+    /// array; their Known* state is the owned state.
+    /// </summary>
+    private static Dictionary<string, List<RewardProductInfo>> BuildRewardProductMap()
     {
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // Season reward IDs are already caret-prefixed product IDs.
-        foreach (var reward in RewardDatabase.SeasonRewards)
-            set.Add(reward.Id);
-        // Twitch rewards: add the product ID (which is what's stored in KnownSpecials).
-        foreach (var reward in RewardDatabase.TwitchRewards)
+        var map = new Dictionary<string, List<RewardProductInfo>>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(RewardEntry reward, string category, string? redeemedArray)
         {
-            if (!string.IsNullOrEmpty(reward.ProductId))
-                set.Add(CatalogueLogic.EnsureCaretPrefix(reward.ProductId));
+            string sourceId = string.IsNullOrEmpty(reward.ProductId) ? reward.Id : reward.ProductId;
+            string productId = CatalogueLogic.EnsureCaretPrefix(sourceId);
+            if (productId.Length <= 1) return;
+            if (!map.TryGetValue(productId, out var sources))
+                map[productId] = sources = [];
+            sources.Add(new RewardProductInfo(reward.Id, productId, category, redeemedArray));
         }
-        return set;
+
+        foreach (var reward in RewardDatabase.SeasonRewards)
+            Add(reward, "season", "RedeemedSeasonRewards");
+        foreach (var reward in RewardDatabase.TwitchRewards)
+            Add(reward, "twitch", "RedeemedTwitchRewards");
+        foreach (var reward in RewardDatabase.PlatformRewards)
+        {
+            if (string.Equals(reward.Category, "entitlement", StringComparison.OrdinalIgnoreCase))
+                Add(reward, "entitlement", null);
+            else
+                Add(reward, "platform", "RedeemedPlatformRewards");
+        }
+
+        return map;
     }
 
     /// <summary>
     /// Checks a set of redeemed IDs against the Known* arrays and records any mismatches.
     /// </summary>
-    /// <param name="twitchToProduct">
-    /// When non-null, maps TwitchIds to product IDs for KnownSpecials/KnownProducts lookups.
+    /// <param name="rewardToProduct">
+    /// When non-null, maps reward IDs to product IDs for Known* lookups.
     /// Pass null for season rewards (their IDs are already product IDs).
     /// </param>
     private static void CheckRedeemedAgainstKnown(
         List<ConsistencyIssue> issues,
         HashSet<string> redeemed,
         string redeemedArrayName,
-        Dictionary<string, string>? twitchToProduct,
+        Dictionary<string, string>? rewardToProduct,
         HashSet<string> knownSpecials,
         HashSet<string> knownProducts,
         HashSet<string> knownTech,
@@ -870,10 +956,10 @@ internal static class AccountLogic
         foreach (var id in redeemed)
         {
             // Resolve to product ID for KnownSpecials/KnownProducts/database lookups.
-            // Twitch rewards store TwitchId in RedeemedTwitchRewards but product ID in
-            // KnownSpecials and KnownProducts.
+            // Twitch and platform redemption IDs can differ from the product IDs
+            // stored in KnownSpecials, KnownProducts and KnownTech.
             string productId = id;
-            if (twitchToProduct != null && twitchToProduct.TryGetValue(id, out var pid))
+            if (rewardToProduct != null && rewardToProduct.TryGetValue(id, out var pid))
                 productId = pid;
 
             string lookupId = CatalogueLogic.StripCaretPrefix(productId);
@@ -887,6 +973,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownSpecials",
@@ -900,6 +987,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownProducts",
@@ -913,6 +1001,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownTech",
@@ -950,14 +1039,10 @@ internal static class AccountLogic
         var playerState = saveData.GetObject("PlayerStateData");
         if (playerState == null) return;
 
-        if (addToMissing)
-        {
-            SyncJsonArrayEntry(playerState, issue.MissingArray, issue.Id, present: true);
-        }
-        else
-        {
-            SyncJsonArrayEntry(playerState, issue.CurrentArray, issue.Id, present: false);
-        }
+        string targetArray = addToMissing ? issue.MissingArray : issue.CurrentArray;
+        string targetId = targetArray.StartsWith("Redeemed", StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(issue.RewardId) ? issue.RewardId : issue.Id;
+        SyncJsonArrayEntry(playerState, targetArray, targetId, present: addToMissing);
     }
 
     /// <summary>

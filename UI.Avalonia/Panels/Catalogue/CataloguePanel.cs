@@ -117,11 +117,11 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _recipeBrowser = new RecipeBrowserPanel(recipes, items);
 
         (_techGrid, _techFilter, Control techPage) = BuildItemPage(
-            _techRows, _visibleTechRows, CatalogueTransferKind.Technologies, "PlayerStateData.KnownTech", AddTechnologyAsync);
+            _techRows, _visibleTechRows, CatalogueTransferKind.Technologies, "PlayerStateData.KnownTech");
         (_productGrid, _productFilter, Control productsPage) = BuildItemPage(
-            _productRows, _visibleProductRows, CatalogueTransferKind.Products, "PlayerStateData.KnownProducts", AddProductAsync);
+            _productRows, _visibleProductRows, CatalogueTransferKind.Products, "PlayerStateData.KnownProducts");
         (_specialGrid, _specialFilter, Control specialsPage) = BuildItemPage(
-            _specialRows, _visibleSpecialRows, CatalogueTransferKind.Specials, "PlayerStateData.KnownSpecials", AddSpecialAsync);
+            _specialRows, _visibleSpecialRows, CatalogueTransferKind.Specials, "PlayerStateData.KnownSpecials");
         (_wordGrid, _wordFilter, Control wordsPage) = BuildWordsPage();
         Control glyphsPage = BuildGlyphsPage();
         (_locationGrid, _locationFilter, Control locationsPage) = BuildLocationsPage();
@@ -162,9 +162,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
             _saveData = saveData;
             _playerState = saveData.GetObject("PlayerStateData");
             if (_playerState == null) { PurgeData(); return; }
-            LoadKnownItems(_playerState, "KnownTech", _techRows, _visibleTechRows, _techFilter.Text);
-            LoadKnownItems(_playerState, "KnownProducts", _productRows, _visibleProductRows, _productFilter.Text);
-            LoadKnownItems(_playerState, "KnownSpecials", _specialRows, _visibleSpecialRows, _specialFilter.Text);
+            LoadItemCatalogs();
             LoadWords(_playerState);
             LoadGlyphs(_playerState);
             LoadLocations(_playerState);
@@ -182,7 +180,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
     {
         _userSettings = accountData?.GetObject("UserSettingsData") ?? accountData;
         foreach (var panel in _completionPanels) panel.SetAccountData(accountData);
-        UpdateTechnologyCompletion();
+        LoadItemCatalogs();
     }
 
     public void SaveData(JsonObject saveData)
@@ -192,9 +190,8 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         if (IsPurged) return;
         JsonObject? player = saveData.GetObject("PlayerStateData");
         if (player == null) return;
-        CatalogueLogic.SaveKnownItemIds(player, "KnownTech", _techRows.Select(row => row.Id).ToList());
-        CatalogueLogic.SaveKnownItemIds(player, "KnownProducts", _productRows.Select(row => row.Id).ToList());
-        CatalogueLogic.SaveKnownItemIds(player, "KnownSpecials", _specialRows.Select(row => row.Id).ToList());
+        // Item checkboxes update the shared save/account graph through CatalogueItemCatalog.
+        // The rows also include unknown items, so never serialize the whole view as Known.
         if (_knownWordGroups != null)
         {
             player.Set("KnownWordGroups", _knownWordGroups);
@@ -216,6 +213,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         Clear(_locationRows, _visibleLocationRows);
         Clear(_fishRows, _visibleFishRows);
         Clear(_recipeRows, _visibleRecipeRows);
+        _itemCatalogs.Clear();
         _saveData = null;
         _playerState = null;
         _knownWordGroups = null;
@@ -224,7 +222,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _locationGlyphs.PortalCode = string.Empty;
         _locationGalaxy.Text = string.Empty;
         _locationCore.Text = string.Empty;
-        _techCompletion.Text = string.Empty;
+        UpdateTechnologyCompletion();
     }
 
     public void SetLocalisationService(LocalisationService service)
@@ -248,9 +246,14 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _knownRecipesTab.Header = UiStrings.Get("recipe.tab_known_recipes");
         _recipeBrowserTab.Header = UiStrings.Get("recipe.tab_recipe_info");
         LocaliseButtons();
-        foreach (var kind in new[] { "Technologies", "Products", "Specials" })
-            if (_buttons.TryGetValue(kind + ".complete", out var complete))
-                complete.Content = UiStrings.Get("discovery.add_all_missing");
+        foreach (var kind in new[] { CatalogueTransferKind.Technologies, CatalogueTransferKind.Products, CatalogueTransferKind.Specials })
+        {
+            _buttons[kind + ".add"].Content = UiStrings.Get("discovery.add_all_visible");
+            _buttons[kind + ".remove"].Content = UiStrings.Get("discovery.remove_all_visible");
+            _buttons[kind + ".complete"].Content = UiStrings.Get("discovery.complete_catalogue");
+            _catalogueOnly[kind].Content = UiStrings.Get("discovery.catalogue_only");
+            _showSeen[kind].Content = UiStrings.Get("discovery.show_seen");
+        }
         UpdateTechnologyCompletion();
         _techFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
         _productFilter.PlaceholderText = UiStrings.Get("discovery.filter_items");
@@ -270,6 +273,7 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         _recipeBrowser.RefreshLanguage();
         if (!IsPurged)
         {
+            foreach (var row in _techRows.Concat(_productRows).Concat(_specialRows)) row.Refresh();
             ApplyItemFilter(_techRows, _visibleTechRows, _techFilter.Text);
             ApplyItemFilter(_productRows, _visibleProductRows, _productFilter.Text);
             ApplyItemFilter(_specialRows, _visibleSpecialRows, _specialFilter.Text);
@@ -281,29 +285,69 @@ public sealed partial class CataloguePanel : UserControl, ISaveEditorPanel, IGoT
         ObservableCollection<CatalogueItemRow> rows,
         ObservableCollection<CatalogueItemRow> visible,
         CatalogueTransferKind kind,
-        string jsonPath,
-        Func<Task> add)
+        string jsonPath)
     {
-        var grid = CatalogueUi.Grid();
+        var grid = CatalogueUi.Grid(readOnly: false);
         grid.ItemsSource = visible;
         grid.Columns.Add(CatalogueUi.ImageColumn("⚙", nameof(CatalogueItemRow.Icon)));
-        grid.Columns.Add(CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Name), star: true));
+        var nameColumn = CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Name), star: true);
+        nameColumn.MinWidth = 180;
+        grid.Columns.Add(nameColumn);
         grid.Columns.Add(CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Category), 220));
         grid.Columns.Add(CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Id), 180));
+        grid.Columns.Add(new DataGridTemplateColumn
+        {
+            Width = new DataGridLength(260),
+            CellTemplate = new FuncDataTemplate<CatalogueItemRow>((row, _) =>
+            {
+                var text = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+                text.Bind(TextBlock.TextProperty, new Binding(nameof(CatalogueItemRow.Description)));
+                text.Bind(ToolTip.TipProperty, new Binding(nameof(CatalogueItemRow.Description)));
+                return text;
+            })
+        });
+        grid.Columns.Add(CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Expedition), 90));
+        grid.Columns.Add(CatalogueUi.TextColumn("", nameof(CatalogueItemRow.Catalogue), 90));
+        grid.Columns.Add(ItemCheckColumn(nameof(CatalogueItemRow.Known), nameof(CatalogueItemRow.CanEditKnown), "discovery.known_help"));
+        var seenColumn = ItemCheckColumn(nameof(CatalogueItemRow.Seen), nameof(CatalogueItemRow.HasAccount), "discovery.seen_help");
+        seenColumn.IsVisible = false;
+        grid.Columns.Add(seenColumn);
         var filter = CatalogueUi.FilterBox(string.Empty, value => ApplyItemFilter(rows, visible, value));
+        var catalogueOnly = new CheckBox();
+        catalogueOnly.IsCheckedChanged += (_, _) => ApplyItemFilter(rows, visible, filter.Text);
+        _catalogueOnly.Add(kind, catalogueOnly);
+        var showSeen = new CheckBox();
+        showSeen.IsCheckedChanged += (_, _) => seenColumn.IsVisible = showSeen.IsChecked == true;
+        _showSeen.Add(kind, showSeen);
         var top = CatalogueUi.Toolbar(filter, CatalogueUi.Button("×", () => filter.Text = string.Empty),
             CatalogueUi.JsonButton(() => RequestGoTo(jsonPath)));
-        var addButton = RegisterButton($"{kind}.add", CatalogueUi.AsyncButton(string.Empty, add));
-        var remove = RegisterButton($"{kind}.remove", CatalogueUi.Button(string.Empty, () => RemoveSelected(grid, rows, visible)));
+        top.Children.Add(catalogueOnly);
+        top.Children.Add(showSeen);
+        var addButton = RegisterButton($"{kind}.add", CatalogueUi.AsyncButton(string.Empty, () => SetVisibleItemsAsync(kind, true)));
+        var remove = RegisterButton($"{kind}.remove", CatalogueUi.AsyncButton(string.Empty, () => SetVisibleItemsAsync(kind, false)));
         var export = RegisterButton($"{kind}.export", CatalogueUi.AsyncButton(string.Empty, () => ExportListAsync(kind)));
         var import = RegisterButton($"{kind}.import", CatalogueUi.AsyncButton(string.Empty, () => ImportListAsync(kind)));
         var footer = CatalogueUi.Toolbar(addButton, remove, export, import);
         var complete = RegisterButton(kind + ".complete", CatalogueUi.AsyncButton(string.Empty, () => CompleteItemsAsync(kind)));
         complete.Name = "Complete" + kind;
         footer.Children.Add(complete);
-        footer.Children.Add(kind == CatalogueTransferKind.Technologies ? _techCompletion : kind == CatalogueTransferKind.Products ? _productCompletion : _specialCompletion);
-        return (grid, filter, CatalogueUi.PageGrid(top, grid, footer));
+        var counter = kind == CatalogueTransferKind.Technologies ? _techCompletion : kind == CatalogueTransferKind.Products ? _productCompletion : _specialCompletion;
+        var bottom = new StackPanel { Spacing = 6, Children = { footer, counter } };
+        return (grid, filter, CatalogueUi.PageGrid(top, grid, bottom));
     }
+
+    private static DataGridTemplateColumn ItemCheckColumn(string property, string enabled, string helpKey) => new()
+    {
+        Width = new DataGridLength(85),
+        CellTemplate = new FuncDataTemplate<CatalogueItemRow>((row, _) =>
+        {
+            var check = new CheckBox { HorizontalAlignment = HorizontalAlignment.Center };
+            check.Bind(CheckBox.IsCheckedProperty, new Binding(property) { Mode = BindingMode.TwoWay });
+            check.Bind(IsEnabledProperty, new Binding(enabled));
+            ToolTip.SetTip(check, UiStrings.Get(helpKey));
+            return check;
+        })
+    };
 
     private (DataGrid Grid, TextBox Filter, Control Page) BuildWordsPage()
     {

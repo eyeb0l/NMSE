@@ -8,38 +8,71 @@ namespace NMSE.UI.Avalonia.Panels.Catalogue;
 
 public sealed partial class CataloguePanel
 {
-    private void LoadKnownItems(JsonObject playerState, string arrayName,
-        ObservableCollection<CatalogueItemRow> rows,
-        ObservableCollection<CatalogueItemRow> visible,
-        string? filter)
-    {
-        rows.Clear();
-        foreach (string id in CatalogueLogic.LoadKnownItemIds(playerState, arrayName))
-            rows.Add(CreateItemRow(id, useSubtitle: false));
-        ApplyItemFilter(rows, visible, filter);
-    }
+    private readonly Dictionary<CatalogueTransferKind, CatalogueItemCatalog> _itemCatalogs = [];
+    private readonly Dictionary<CatalogueTransferKind, CheckBox> _catalogueOnly = [];
+    private readonly Dictionary<CatalogueTransferKind, CheckBox> _showSeen = [];
 
-    private CatalogueItemRow CreateItemRow(string id, bool useSubtitle)
+    private (ObservableCollection<CatalogueItemRow> Rows, ObservableCollection<CatalogueItemRow> Visible, TextBox Filter, TextBlock Counter) ItemList(CatalogueTransferKind kind) => kind switch
     {
-        string cleanId = CatalogueLogic.StripCaretPrefix(id);
-        GameItem? item = _items.GetItem(cleanId) ?? _items.GetItem(id);
-        return new CatalogueItemRow
+        CatalogueTransferKind.Products => (_productRows, _visibleProductRows, _productFilter, _productCompletion),
+        CatalogueTransferKind.Specials => (_specialRows, _visibleSpecialRows, _specialFilter, _specialCompletion),
+        _ => (_techRows, _visibleTechRows, _techFilter, _techCompletion)
+    };
+
+    private static CatalogueItemKind ItemKind(CatalogueTransferKind kind) => kind switch
+    {
+        CatalogueTransferKind.Products => CatalogueItemKind.Product,
+        CatalogueTransferKind.Specials => CatalogueItemKind.Special,
+        _ => CatalogueItemKind.Technology
+    };
+
+    private void LoadItemCatalogs()
+    {
+        _itemCatalogs.Clear();
+        if (_playerState == null) return;
+        foreach (var kind in new[] { CatalogueTransferKind.Technologies, CatalogueTransferKind.Products, CatalogueTransferKind.Specials })
         {
-            Icon = _icons?.GetIconForItem(cleanId, _items),
-            Name = item?.Name ?? cleanId,
-            Category = useSubtitle && !string.IsNullOrWhiteSpace(item?.Subtitle) ? item.Subtitle : item?.ItemType ?? string.Empty,
-            Id = cleanId
-        };
+            var catalog = new CatalogueItemCatalog(ItemKind(kind), _playerState, _userSettings, _items, _catalogue);
+            _itemCatalogs.Add(kind, catalog);
+            var list = ItemList(kind);
+            list.Rows.Clear();
+            foreach (var entry in catalog.Entries)
+                list.Rows.Add(new CatalogueItemRow(catalog, entry,
+                    _icons?.GetIconForItem(entry.Id, _items), ItemStateChanged));
+            ApplyItemFilter(list.Rows, list.Visible, list.Filter.Text);
+        }
+        UpdateTechnologyCompletion();
     }
 
-    private static void ApplyItemFilter(IEnumerable<CatalogueItemRow> rows, ObservableCollection<CatalogueItemRow> visible, string? text)
+    private void ItemStateChanged()
+    {
+        // Special buildings share KnownProducts with the products tab; account Seen
+        // state also overlaps. Refresh all models without rebuilding the active editor.
+        foreach (var catalog in _itemCatalogs.Values) catalog.RefreshKnownSets();
+        foreach (var row in _techRows.Concat(_productRows).Concat(_specialRows)) row.Refresh();
+        RaiseModified();
+    }
+
+    private void ApplyItemFilter(IEnumerable<CatalogueItemRow> rows, ObservableCollection<CatalogueItemRow> visible, string? text)
     {
         string filter = (text ?? string.Empty).Trim();
+        var kind = ReferenceEquals(rows, _productRows) ? CatalogueTransferKind.Products :
+            ReferenceEquals(rows, _specialRows) ? CatalogueTransferKind.Specials : CatalogueTransferKind.Technologies;
+        bool catalogueOnly = _catalogueOnly.TryGetValue(kind, out var check) && check.IsChecked == true;
+        bool? catalogueAlias = filter.ToLowerInvariant() switch
+        {
+            "catalogue" or "counted" or "yes" or "y" => true,
+            "not catalogue" or "not counted" or "no" or "n" => false,
+            _ => null
+        };
         visible.Clear();
-        foreach (CatalogueItemRow row in rows.Where(row => filter.Length == 0 ||
+        foreach (CatalogueItemRow row in rows.Where(row => (!catalogueOnly || row.IsCatalogue) &&
+                     (filter.Length == 0 || (catalogueAlias.HasValue ? row.IsCatalogue == catalogueAlias.Value :
                      row.Name.Contains(filter, StringComparison.CurrentCultureIgnoreCase) ||
                      row.Category.Contains(filter, StringComparison.CurrentCultureIgnoreCase) ||
-                     row.Id.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+                     row.Description.Contains(filter, StringComparison.CurrentCultureIgnoreCase) ||
+                     row.Expedition.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                     row.Id.Contains(filter, StringComparison.OrdinalIgnoreCase)))))
             visible.Add(row);
     }
 
@@ -51,28 +84,28 @@ public sealed partial class CataloguePanel
         RaiseModified();
     }
 
-    private Task AddTechnologyAsync() => AddItemsAsync(
-        UiStrings.Get("discovery.add_technology"),
-        _techRows, _visibleTechRows, _techFilter,
-        item => CatalogueLogic.TechItemTypes.Contains(item.ItemType) &&
-                !item.BrokenSlotTech && !GameItemDatabase.IsPickerExcluded(item.Id) && CatalogueLogic.IsLearnableTechnology(item));
-
-    private (string Array, string Seen, IReadOnlyList<string> Ids, ObservableCollection<CatalogueItemRow> Rows, ObservableCollection<CatalogueItemRow> Visible, TextBox Filter, TextBlock Counter) CompletionList(CatalogueTransferKind kind) => kind switch
+    private async Task SetVisibleItemsAsync(CatalogueTransferKind kind, bool known)
     {
-        CatalogueTransferKind.Products => ("KnownProducts", "SeenProducts", _catalogue.KnownProductsForCompletion(_items), _productRows, _visibleProductRows, _productFilter, _productCompletion),
-        CatalogueTransferKind.Specials => ("KnownSpecials", "SeenProducts", _catalogue.KnownSpecialsForCompletion(_items), _specialRows, _visibleSpecialRows, _specialFilter, _specialCompletion),
-        _ => ("KnownTech", "SeenTechnologies", _catalogue.KnownTechForCompletion(_items), _techRows, _visibleTechRows, _techFilter, _techCompletion)
-    };
+        if (!_itemCatalogs.TryGetValue(kind, out var catalog)) return;
+        var entries = ItemList(kind).Visible.Where(row => known ? row.CanAddKnown && row.Known != true : row.Known != false)
+            .Select(row => row.Entry).ToArray();
+        if (entries.Length == 0) return;
+        string key = known ? "discovery.add_all_visible_confirm" : "discovery.remove_all_visible_confirm";
+        if (ConfirmAsync == null || !await ConfirmAsync(UiStrings.Get("discovery.add_all_title"), UiStrings.Format(key, entries.Length), default)) return;
+        if (catalog.SetKnown(entries, known) > 0) ItemStateChanged();
+    }
 
     private void UpdateTechnologyCompletion()
     {
         foreach (var kind in new[] { CatalogueTransferKind.Technologies, CatalogueTransferKind.Products, CatalogueTransferKind.Specials })
         {
-            var list = CompletionList(kind);
-            if (_playerState == null) { list.Counter.Text = string.Empty; continue; }
-            var view = new JsonObject(); view.Set(list.Array, StringArray(list.Rows.Select(row => row.Id)));
-            var (have, total) = CatalogueCompletionLogic.GetCombinedCompletion(view, list.Array, _userSettings, list.Seen, list.Ids);
-            list.Counter.Text = UiStrings.Format("discovery.completion_counter", have, total, total == 0 ? 0 : (int)Math.Round(100d * have / total));
+            var list = ItemList(kind);
+            if (!_itemCatalogs.TryGetValue(kind, out var catalog)) { list.Counter.Text = string.Empty; continue; }
+            var (have, total) = catalog.GetCatalogueCompletion();
+            int all = catalog.Entries.Count;
+            int known = catalog.GetKnownCount();
+            list.Counter.Text = UiStrings.Format("discovery.catalogue_counter", have, total, total == 0 ? 0 : (int)Math.Round(100d * have / total)) +
+                "   " + UiStrings.Format("discovery.all_counter", known, all, all == 0 ? 0 : (int)Math.Round(100d * known / all));
         }
     }
 
@@ -81,86 +114,12 @@ public sealed partial class CataloguePanel
     private async Task CompleteItemsAsync(CatalogueTransferKind kind)
     {
         if (_playerState == null) return;
-        var list = CompletionList(kind);
-        var view = new JsonObject(); view.Set(list.Array, StringArray(list.Rows.Select(row => row.Id)));
-        var (have, total) = CatalogueCompletionLogic.GetCombinedCompletion(view, list.Array, _userSettings, list.Seen, list.Ids);
-        int missing = total - have;
-        if (kind == CatalogueTransferKind.Products)
-        {
-            var specials = CompletionList(CatalogueTransferKind.Specials);
-            var specialView = new JsonObject(); specialView.Set(specials.Array, StringArray(specials.Rows.Select(row => row.Id)));
-            var specialCount = CatalogueCompletionLogic.GetCompletion(specialView, specials.Array, specials.Ids);
-            missing += specialCount.Total - specialCount.Have;
-            if (_userSettings != null)
-            {
-                var substances = CatalogueCompletionLogic.GetSeenCompletion(_userSettings, "SeenSubstances", _catalogue.SeenSubstances);
-                missing += substances.Total - substances.Have;
-            }
-        }
-        // Technology entries filtered out of KnownTech still belong in the account seen list.
-        if (kind == CatalogueTransferKind.Technologies && _userSettings != null)
-        {
-            var seen = CatalogueCompletionLogic.GetSeenCompletion(_userSettings, list.Seen, _catalogue.KnownTech);
-            missing = Math.Max(missing, seen.Total - seen.Have);
-        }
+        int missing = CatalogueCompletionLogic.CountMissingCatalogue(_playerState, _userSettings, _items, _catalogue);
         if (missing == 0) return;
-        if (ConfirmAsync != null && !await ConfirmAsync(UiStrings.Get("discovery.add_all_missing_title"), UiStrings.Format("discovery.add_all_missing_confirm", missing), default)) return;
-        CatalogueLogic.SaveKnownItemIds(_playerState, list.Array, list.Rows.Select(row => row.Id).ToList());
-        int changed = CatalogueCompletionLogic.AddMissingIds(_playerState, list.Array, list.Ids);
-        if (_userSettings != null)
-            changed += CatalogueCompletionLogic.AddMissingSeen(_userSettings, list.Seen, kind == CatalogueTransferKind.Technologies ? _catalogue.KnownTech : list.Ids);
-        if (kind == CatalogueTransferKind.Products)
-        {
-            CatalogueLogic.SaveKnownItemIds(_playerState, "KnownSpecials", _specialRows.Select(row => row.Id).ToList());
-            changed += CatalogueCompletionLogic.AddMissingIds(_playerState, "KnownSpecials", _catalogue.KnownSpecialsForCompletion(_items));
-            if (_userSettings != null) changed += CatalogueCompletionLogic.AddMissingSeen(_userSettings, "SeenSubstances", _catalogue.SeenSubstances);
-            LoadKnownItems(_playerState, "KnownSpecials", _specialRows, _visibleSpecialRows, _specialFilter.Text);
-        }
-        LoadKnownItems(_playerState, list.Array, list.Rows, list.Visible, list.Filter.Text);
-        if (changed > 0) RaiseModified();
-        else UpdateTechnologyCompletion();
-    }
-
-    private Task AddProductAsync() => AddItemsAsync(
-        UiStrings.Get("discovery.add_product"),
-        _productRows, _visibleProductRows, _productFilter,
-        item => CatalogueLogic.ProductItemTypes.Contains(item.ItemType) &&
-                !GameItemDatabase.IsPickerExcluded(item.Id) && CatalogueLogic.IsLearnableProduct(item));
-
-    private Task AddSpecialAsync() => AddItemsAsync(
-        UiStrings.Get("discovery.add_special"),
-        _specialRows, _visibleSpecialRows, _specialFilter,
-        item => string.Equals(item.TradeCategory, "SpecialShop", StringComparison.OrdinalIgnoreCase) &&
-                !GameItemDatabase.IsPickerExcluded(item.Id));
-
-    private async Task AddItemsAsync(string title,
-        ObservableCollection<CatalogueItemRow> rows,
-        ObservableCollection<CatalogueItemRow> visible,
-        TextBox filter,
-        Func<GameItem, bool> predicate)
-    {
-        if (Owner is not { } owner) return;
-        var known = rows.Select(row => row.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        CataloguePickerItem[] candidates = _items.Items.Values
-            .Where(item => predicate(item) && !known.Contains(item.Id))
-            .OrderBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase)
-            .Select(item => new CataloguePickerItem
-            {
-                Icon = _icons?.GetIconForItem(item.Id, _items),
-                Name = item.Name,
-                Id = item.Id,
-                Category = string.IsNullOrWhiteSpace(item.Subtitle) ? item.ItemType : item.Subtitle
-            }).ToArray();
-        if (candidates.Length == 0) return;
-        var picker = new CataloguePickerDialog(title, candidates);
-        string[]? selected = await picker.ShowDialog<string[]>(owner);
-        if (selected == null || selected.Length == 0) return;
-        foreach (string id in selected)
-        {
-            if (known.Add(id)) rows.Add(CreateItemRow(id, useSubtitle: true));
-        }
-        ApplyItemFilter(rows, visible, filter.Text);
-        RaiseModified();
+        if (ConfirmAsync == null || !await ConfirmAsync(UiStrings.Get("discovery.complete_catalogue"), UiStrings.Format("discovery.complete_catalogue_confirm", missing), default)) return;
+        if (CatalogueCompletionLogic.CompleteCatalogue(_playerState, _userSettings, _items, _catalogue) == 0) return;
+        ItemStateChanged();
+        foreach (var panel in _completionPanels) panel.LoadData(_saveData);
     }
 
     private void LoadWords(JsonObject playerState)

@@ -13370,6 +13370,28 @@ public class LogicTests
         Assert.Equal(new[] { "BANNER_AF", "BANNER_AGT", "BOLT_SM" }, after);
     }
 
+    [Theory]
+    [InlineData("SPEC_XOHELMET", "^SPEC_XOHELMET", false)]
+    [InlineData("SPEC_XOHELMET", "^SPEC_XOHELMET", true)]
+    [InlineData("^spec_xohelmet", "SPEC_XOHELMET", false)]
+    [InlineData("^spec_xohelmet", "SPEC_XOHELMET", true)]
+    public void SaveManagedRewardList_CaretPrefixDoesNotChangeManagedIdentity(string storedId, string managedId, bool present)
+    {
+        var settings = new JsonObject();
+        var array = new JsonArray();
+        array.Add("BANNER_AF");
+        array.Add(storedId);
+        array.Add("BANNER_AGT");
+        settings.Set("UnlockedSpecials", array);
+        var rows = new List<(string Id, bool Present)> { (managedId, present) };
+
+        AccountLogic.SaveManagedRewardList(settings, "UnlockedSpecials", rows);
+        AccountLogic.SaveManagedRewardList(settings, "UnlockedSpecials", rows);
+
+        Assert.Equal(present ? new[] { "BANNER_AF", storedId, "BANNER_AGT" } : new[] { "BANNER_AF", "BANNER_AGT" },
+            CaptureStringArray(settings, "UnlockedSpecials"));
+    }
+
     /// <summary>
     /// Verifies that GetEntitlementSeenArrayName only returns SeenTechnologies for
     /// technology-table products and null for everything else.

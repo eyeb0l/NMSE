@@ -54,6 +54,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
     private HashSet<string> _originalTwitchRedeemed = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _originalPlatformRedeemed = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _entitlementIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _editedEntitlementUnlocks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _editedEntitlementRedemptions = new(StringComparer.OrdinalIgnoreCase);
     private bool _loading;
 
     public AccountRewardsPanel(AvaloniaResourceCatalog resources, AccountRewardsDesktopActions desktop)
@@ -212,6 +214,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
     public void LoadData(JsonObject saveData)
     {
         _currentSaveData = saveData ?? throw new ArgumentNullException(nameof(saveData));
+        _editedEntitlementRedemptions.Clear();
         (HashSet<string> season, HashSet<string> twitch) = AccountLogic.GetRedeemedSets(saveData);
         _originalSeasonRedeemed = new HashSet<string>(season, StringComparer.OrdinalIgnoreCase);
         _originalTwitchRedeemed = new HashSet<string>(twitch, StringComparer.OrdinalIgnoreCase);
@@ -243,20 +246,30 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         AccountLogic.SaveRewardList(platform.Where(row => !_entitlementIds.Contains(row.Id)).Select(row => (row.Id, row.Unlocked)).ToList(), settings, "UnlockedPlatformRewards");
         var specials = new List<(string Id, bool Present)>();
         var seenTech = new List<(string Id, bool Present)>();
+        // Catalogue writes the same entitlement state directly. Cached, untouched
+        // account rows must not overwrite edits made after this panel was loaded.
+        var currentSpecials = AccountLogic.GetUnlockedSet(settings.GetArray("UnlockedSpecials"))
+            .Select(CatalogueLogic.StripCaretPrefix).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var row in platform.Where(row => _entitlementIds.Contains(row.Id)))
         {
             string product = CatalogueLogic.EnsureCaretPrefix(_productIds.GetValueOrDefault(row.Id, row.Id));
-            specials.Add((product, row.Unlocked));
-            if (AccountLogic.GetEntitlementSeenArrayName(_resources.Items.GetItem(product)) is not null)
-                seenTech.Add((product, row.Unlocked));
+            bool edited = _editedEntitlementUnlocks.Contains(row.Id);
+            bool unlocked = edited ? row.Unlocked : currentSpecials.Contains(CatalogueLogic.StripCaretPrefix(product));
+            if (edited) specials.Add((product, unlocked));
+            // Preserve the existing technology repair, but derive it from live
+            // account state. Only explicit edits may clear an account Seen entry.
+            if ((edited || unlocked) && AccountLogic.GetEntitlementSeenArrayName(_resources.Items.GetItem(product)) is not null)
+                seenTech.Add((product, unlocked));
         }
         AccountLogic.SaveManagedRewardList(settings, "UnlockedSpecials", specials);
         AccountLogic.SaveManagedRewardList(settings, "SeenTechnologies", seenTech);
         if (saveData.GetObject("PlayerStateData") is { } player)
             AccountLogic.SaveManagedRewardList(player, "RedeemedPlatformRewards",
                 platform.Where(row => !_entitlementIds.Contains(row.Id)).Select(row => (row.Id, row.Redeemed)).ToList());
-        AccountLogic.SyncKnownArraysForChangedRewards(saveData,
-            GetChangedRewards(platform, _originalPlatformRedeemed), _resources.Items, _productIds);
+        var platformChanges = GetChangedRewards(platform.Where(row => !_entitlementIds.Contains(row.Id)), _originalPlatformRedeemed);
+        platformChanges.AddRange(platform.Where(row => _entitlementIds.Contains(row.Id)
+            && _editedEntitlementRedemptions.Contains(row.Id)).Select(row => (row.Id, row.Redeemed)));
+        AccountLogic.SyncKnownArraysForChangedRewards(saveData, platformChanges, _resources.Items, _productIds);
         AccountLogic.SaveRedeemedRewards(saveData,
             season.Select(row => (row.Id, row.Redeemed)).ToList(),
             twitch.Select(row => (row.Id, row.Redeemed)).ToList(),
@@ -273,6 +286,11 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             _resources.Items,
             _productIds);
 
+        _originalSeasonRedeemed = new HashSet<string>(season.Where(row => row.Redeemed).Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
+        _originalTwitchRedeemed = new HashSet<string>(twitch.Where(row => row.Redeemed).Select(row => row.Id), StringComparer.OrdinalIgnoreCase);
+        _originalPlatformRedeemed = BuildPlatformRedeemedSet(saveData);
+        _editedEntitlementUnlocks.Clear();
+        _editedEntitlementRedemptions.Clear();
         DataModified?.Invoke(this, EventArgs.Empty);
     }
 
@@ -363,6 +381,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
     private void ApplyAccountData(AccountLogic.AccountData data, bool useMxml)
     {
+        _editedEntitlementUnlocks.Clear();
+        _editedEntitlementRedemptions.Clear();
         _loading = true;
         try
         {
@@ -476,13 +496,22 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
 
     private void SetAll(RewardTab tab, bool? unlocked, bool? redeemed)
     {
+        bool entitlementEdits = false;
         foreach (RewardRowViewModel row in tab.VisibleRows)
         {
+            // A bulk command is an explicit edit even if a cached checkbox already
+            // displays that value while Catalogue has changed the shared data.
+            if (_entitlementIds.Contains(row.Id))
+            {
+                if (unlocked.HasValue) entitlementEdits |= _editedEntitlementUnlocks.Add(row.Id);
+                if (redeemed.HasValue) entitlementEdits |= _editedEntitlementRedemptions.Add(row.Id);
+            }
             if (unlocked.HasValue)
                 row.Unlocked = unlocked.Value;
             if (redeemed.HasValue)
                 row.Redeemed = redeemed.Value;
         }
+        if (entitlementEdits) DataModified?.Invoke(this, EventArgs.Empty);
     }
 
     private void SetRedeemed(RewardTab tab, HashSet<string> redeemed)
@@ -584,7 +613,8 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
             await _desktop.ShowInfoAsync(UiStrings.Get("account.consistency_check"), UiStrings.Get("account.consistency_no_save"));
             return;
         }
-        List<AccountLogic.ConsistencyIssue> issues = AccountLogic.CheckConsistencyStructured(_currentSaveData, _resources.Items);
+        List<AccountLogic.ConsistencyIssue> issues = AccountLogic.CheckConsistencyStructured(_currentSaveData, _resources.Items,
+            _accountData?.GetObject("UserSettingsData") ?? _accountData);
         if (issues.Count == 0)
         {
             await _desktop.ShowInfoAsync(UiStrings.Get("account.consistency_check"), UiStrings.Get("account.consistency_ok"));
@@ -601,14 +631,21 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         if (dialog.HasChanges) DataModified?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnRewardChanged(object? sender, EventArgs e)
+    private void OnRewardChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (!_loading)
-            DataModified?.Invoke(this, EventArgs.Empty);
+        if (_loading) return;
+        if (sender is RewardRowViewModel row && _entitlementIds.Contains(row.Id))
+        {
+            if (e.PropertyName == nameof(RewardRowViewModel.Unlocked)) _editedEntitlementUnlocks.Add(row.Id);
+            if (e.PropertyName == nameof(RewardRowViewModel.Redeemed)) _editedEntitlementRedemptions.Add(row.Id);
+        }
+        DataModified?.Invoke(this, EventArgs.Empty);
     }
 
     private void ClearRows()
     {
+        _editedEntitlementUnlocks.Clear();
+        _editedEntitlementRedemptions.Clear();
         foreach (RewardTab tab in new[] { _seasonTab, _twitchTab, _platformTab })
         {
             tab.AllRows.Clear();
@@ -764,7 +801,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
-        public event EventHandler? Changed;
+        public event PropertyChangedEventHandler? Changed;
 
         private void SetField(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
         {
@@ -772,7 +809,7 @@ public sealed class AccountRewardsPanel : UserControl, ISaveEditorPanel
                 return;
             field = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-            Changed?.Invoke(this, EventArgs.Empty);
+            Changed?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
     }
 }

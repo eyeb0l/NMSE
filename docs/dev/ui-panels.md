@@ -49,8 +49,23 @@ inventory transfers and companion egg placement while leaving unloaded panels de
   and battle-team indices aligned during sorting/moves and preserves locked slots.
 - Milestones renders the shared `MilestoneCatalog`, including four groups,
   subcategories, synchronized shared stats and a searchable stat reference.
+- Catalogue item lists bind `CatalogueItemCatalog` through observable rows with Known,
+  optional Seen, catalogue membership, descriptions and expedition numbers. Known changes
+  update the shared save/account graph immediately; `SaveData` must never serialize all
+  displayed rows as known. Products and Specials refresh each other for shared buildings.
+  Add All/Remove All use the intersection of text and Catalogue only filters. Complete
+  Catalogue ignores those filters and includes raw materials. Account-less Seen controls
+  are disabled. Imports use the same unlock rules. Specials exports preserve primary
+  KnownSpecials membership, including partially known buildings. Without account data,
+  Complete Catalogue counts only writable save state and stops prompting once it is done.
 - Catalogue completion uses the extracted story-page indices and source-table-aware
   completion sets. Account seen lists are updated alongside save completion.
+- Account Rewards passes account settings into consistency checks, highlights ambiguous
+  unlocked-but-not-redeemed entries, and refreshes redeemed snapshots after each save.
+  Entitlement unlock and redemption writes apply only explicit field edits, preserving
+  later Catalogue changes when Account Rewards was already loaded.
+- Milestone labels inherit Avalonia theme resources and remain theme-aware during live
+  localisation; the upstream WinForms theme-tree reapplication is unnecessary here.
 - Raw JSON bookmarks use `RawJsonBookmarksLogic` and `AppConfig`. Save/account paths
   have separate scopes, with in-memory bookmarks for unsaved documents. A bookmark
   can restore Split view with node isolation.

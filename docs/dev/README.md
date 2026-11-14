@@ -63,9 +63,10 @@ because the solution also includes the Windows-only extractor.
 ### [Core Logic](core-logic.md)
 
 Logic classes that encapsulate game rules, data transformation, and domain operations.
-All classes are `internal static` with no mutable state.
+Most are `internal static` with no mutable state; `CatalogueItemCatalog` is a scoped
+instance model for the unified catalogue item lists.
 
-- AccountLogic, BaseLogic, CatalogueLogic, CatalogueCompletionLogic (partials), CompanionLogic
+- AccountLogic, BaseLogic, CatalogueLogic, CatalogueCompletionLogic (partials), CatalogueItemCatalog, CompanionLogic
 - DatabaseSearchLogic, ExocraftLogic, ExosuitLogic, FreighterLogic, FrigateLogic
 - InventoryBulkActions, KnowledgeCatalogue, MainStatsLogic, MilestoneLogic, MultitoolLogic
 - OutfitLogic, RawJsonLogic, SaveContext, SettlementLogic, SpaceStationLogic
@@ -154,6 +155,8 @@ part of the current native build or installation path.
 | 9 | Multi-format import/export | `InventoryImportHelper` detects and unwraps NomNom and NMSSaveEditor wrappers so users can share inventories across tools |
 | 10 | Extractor pipeline (MBIN -> MXML -> JSON) | Game data is compiled into MBIN binary; the extractor decompiles to MXML, parses to dictionaries, then categorizes into JSON database files |
 | 11 | Multi-language localisation | Per-language JSON files in `Resources/json/lang/` (16 languages, BCP 47 tags). Items store `_LocStr` keys for runtime localisation lookup. The language menu switches live display language; internal logic retains English defaults while UI strings come from `Resources/ui/lang/` |
+| 12 | Catalogue item state | `CatalogueItemCatalog` and `ItemUnlockRules` define Known/Seen writes for Avalonia catalogue rows; bulk actions use the visible filtered rows, while Complete Catalogue includes raw materials |
+| 13 | Account rewards | Account context distinguishes ambiguous unlocks from stale rewards; redeemed snapshots refresh after each save so a second edit in the same session removes matching Known state |
 
 ### Reversed game code
 
