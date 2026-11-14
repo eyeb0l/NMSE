@@ -8,6 +8,7 @@ namespace NMSE.Tests;
 /// game-correct affinity name resolution, emoji lookup, display names,
 /// and weak/strong matchup data.
 /// </summary>
+[Collection("MutableStaticDatabases")]
 public class CompanionDatabaseTests
 {
     // --- GetAffinityGameName ---
@@ -496,6 +497,8 @@ public class CompanionDatabaseTests
         var savedEntries = CompanionDatabase.Entries.ToList();
         var savedById = CompanionDatabase.ById.ToDictionary(
             kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
+        var savedVariants = CompanionAccessoryDatabase.VariantByDescriptor.ToDictionary(
+            kvp => kvp.Key, kvp => kvp.Value, StringComparer.OrdinalIgnoreCase);
         try
         {
             action();
@@ -509,6 +512,9 @@ public class CompanionDatabaseTests
             CompanionDatabase.ById.Clear();
             foreach (var kvp in savedById)
                 CompanionDatabase.ById[kvp.Key] = kvp.Value;
+            CompanionAccessoryDatabase.VariantByDescriptor.Clear();
+            foreach (var kvp in savedVariants)
+                CompanionAccessoryDatabase.VariantByDescriptor[kvp.Key] = kvp.Value;
         }
     }
 
