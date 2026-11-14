@@ -76,7 +76,10 @@ for each Known* product. Any matching redemption or entitlement without a redemp
 step legitimises the known entry. Category unlocks use reward IDs; `UnlockedSpecials`
 uses product IDs. An unlocked but unredeemed entry is ambiguous, and repairs prefer an
 account-unlocked source. Issues retain both identities so repairs write reward IDs to
-Redeemed* arrays and product IDs to Known* arrays.
+Redeemed* arrays and product IDs to Known* arrays. Forward checks resolve both Twitch
+and platform redemption IDs to their product IDs before inspecting Known* state.
+`SaveManagedRewardList` compares bare and caret-prefixed IDs as the same managed item,
+so Account Rewards can remove catalogue-created unlocks without rewriting unrelated entries.
 
 ---
 

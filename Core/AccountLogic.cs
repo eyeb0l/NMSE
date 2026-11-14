@@ -599,6 +599,8 @@ internal static class AccountLogic
     /// be present and appends newly-present managed IDs. This is required for arrays
     /// that also contain game-managed entries (e.g. account-level <c>UnlockedSpecials</c>
     /// and <c>SeenTechnologies</c>, which hold hundreds of vendor/collectable IDs).
+    /// Bare and caret-prefixed IDs compare equally; retained entries keep their stored
+    /// form and new entries use the caller's form.
     /// </summary>
     /// <param name="container">The JSON object containing the array.</param>
     /// <param name="key">The JSON key for the array.</param>
@@ -618,7 +620,7 @@ internal static class AccountLogic
         foreach (var (id, present) in rows)
         {
             if (present && !string.IsNullOrEmpty(id))
-                desiredSet.Add(id);
+                desiredSet.Add(CatalogueLogic.StripCaretPrefix(id));
         }
 
         // Build a set of all IDs managed by the caller (whether present or not).
@@ -626,7 +628,7 @@ internal static class AccountLogic
         foreach (var (id, _) in rows)
         {
             if (!string.IsNullOrEmpty(id))
-                managedIds.Add(id);
+                managedIds.Add(CatalogueLogic.StripCaretPrefix(id));
         }
 
         // Remove existing managed entries that should no longer be present, preserving
@@ -636,7 +638,8 @@ internal static class AccountLogic
             var existing = array.GetString(i);
             if (string.IsNullOrEmpty(existing)) continue;
 
-            if (managedIds.Contains(existing) && !desiredSet.Contains(existing))
+            string normalised = CatalogueLogic.StripCaretPrefix(existing);
+            if (managedIds.Contains(normalised) && !desiredSet.Contains(normalised))
                 array.RemoveAt(i);
         }
 
@@ -646,13 +649,14 @@ internal static class AccountLogic
         {
             var existing = array.GetString(i);
             if (!string.IsNullOrEmpty(existing))
-                currentSet.Add(existing);
+                currentSet.Add(CatalogueLogic.StripCaretPrefix(existing));
         }
 
         // Append any newly-present managed entries that aren't already in the array.
-        foreach (var id in desiredSet)
+        foreach (var (id, present) in rows)
         {
-            if (!currentSet.Contains(id))
+            if (present && !string.IsNullOrEmpty(id)
+                && currentSet.Add(CatalogueLogic.StripCaretPrefix(id)))
                 array.Add(id);
         }
     }
@@ -771,7 +775,9 @@ internal static class AccountLogic
         // Build a map from TwitchId (^TWITCH_NNN) -> caret-prefixed product ID (^EXPD_POSTER11A)
         // from the RewardDatabase. Used for KnownSpecials and KnownProducts checks which store
         // product IDs, not TwitchIds.
-        var twitchToProduct = BuildTwitchProductMap();
+        var twitchToProduct = BuildRewardToProductMap(RewardDatabase.TwitchRewards);
+        var platformToProduct = BuildRewardToProductMap(
+            RewardDatabase.PlatformRewards.Where(reward => reward.Category != "entitlement"));
 
         // Check: redeemed season and Twitch rewards should have matching Known* entries.
         // Season reward IDs are already product IDs; Twitch IDs are resolved.
@@ -783,7 +789,7 @@ internal static class AccountLogic
         // Platform rewards use RedeemedPlatformRewards. Entitlement rewards do not
         // have a redeem array; their Known* state is the owned state.
         CheckRedeemedAgainstKnown(issues, redeemedPlatform, "RedeemedPlatformRewards",
-            null, knownSpecials, knownProducts, knownTech, database);
+            platformToProduct, knownSpecials, knownProducts, knownTech, database);
 
         // Build the reward product map used by the reverse check. This is keyed by
         // the product ID stored in KnownSpecials/KnownProducts/KnownTech, and records
@@ -873,15 +879,13 @@ internal static class AccountLogic
     }
 
     /// <summary>
-    /// Builds a map from TwitchId (e.g. <c>^TWITCH_376</c>) to caret-prefixed product ID
-    /// (e.g. <c>^EXPD_POSTER11A</c>) using the <see cref="RewardDatabase"/>.
-    /// Used so that KnownSpecials and KnownProducts checks can look up the product ID
-    /// for twitch rewards (those arrays store product IDs, not TwitchIds).
+    /// Maps reward IDs (for example Twitch or platform redemption IDs) to the
+    /// caret-prefixed product IDs stored in Known* arrays.
     /// </summary>
-    private static Dictionary<string, string> BuildTwitchProductMap()
+    private static Dictionary<string, string> BuildRewardToProductMap(IEnumerable<RewardEntry> rewards)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var reward in RewardDatabase.TwitchRewards)
+        foreach (var reward in rewards)
         {
             if (!string.IsNullOrEmpty(reward.ProductId))
                 map[reward.Id] = CatalogueLogic.EnsureCaretPrefix(reward.ProductId);
@@ -935,15 +939,15 @@ internal static class AccountLogic
     /// <summary>
     /// Checks a set of redeemed IDs against the Known* arrays and records any mismatches.
     /// </summary>
-    /// <param name="twitchToProduct">
-    /// When non-null, maps TwitchIds to product IDs for KnownSpecials/KnownProducts lookups.
+    /// <param name="rewardToProduct">
+    /// When non-null, maps reward IDs to product IDs for Known* lookups.
     /// Pass null for season rewards (their IDs are already product IDs).
     /// </param>
     private static void CheckRedeemedAgainstKnown(
         List<ConsistencyIssue> issues,
         HashSet<string> redeemed,
         string redeemedArrayName,
-        Dictionary<string, string>? twitchToProduct,
+        Dictionary<string, string>? rewardToProduct,
         HashSet<string> knownSpecials,
         HashSet<string> knownProducts,
         HashSet<string> knownTech,
@@ -952,10 +956,10 @@ internal static class AccountLogic
         foreach (var id in redeemed)
         {
             // Resolve to product ID for KnownSpecials/KnownProducts/database lookups.
-            // Twitch rewards store TwitchId in RedeemedTwitchRewards but product ID in
-            // KnownSpecials and KnownProducts.
+            // Twitch and platform redemption IDs can differ from the product IDs
+            // stored in KnownSpecials, KnownProducts and KnownTech.
             string productId = id;
-            if (twitchToProduct != null && twitchToProduct.TryGetValue(id, out var pid))
+            if (rewardToProduct != null && rewardToProduct.TryGetValue(id, out var pid))
                 productId = pid;
 
             string lookupId = CatalogueLogic.StripCaretPrefix(productId);

@@ -188,6 +188,28 @@ public class AccountConsistencyTests
         Assert.True(Assert.Single(AccountLogic.CheckConsistencyStructured(save, db, account)).IsAmbiguous);
     }
 
+    [Theory]
+    [InlineData("^TGA_SHIP1", "^TGA_SHIP01")]
+    [InlineData("^SW_PREORDER", "^SWITCH_SHIP01")]
+    [InlineData("^SW_PREORDER2", "^SWITCH_GUN01")]
+    public void PlatformRedemptionWithoutKnownProduct_IsReportedAndRepairable(string rewardId, string productId)
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "RedeemedPlatformRewards", rewardId);
+        var issue = Assert.Single(AccountLogic.CheckConsistencyStructured(save, db),
+            issue => issue.MissingArray == "KnownSpecials");
+        Assert.Equal(productId, issue.Id);
+        Assert.Equal(rewardId, issue.RewardId);
+        Assert.Equal("RedeemedPlatformRewards", issue.CurrentArray);
+
+        AccountLogic.ResolveConsistencyIssue(save, issue, addToMissing: true);
+
+        Assert.Contains(productId, Values(save, "KnownSpecials"));
+        Assert.DoesNotContain(rewardId, Values(save, "KnownSpecials"));
+        Assert.Empty(AccountLogic.CheckConsistencyStructured(save, db));
+    }
+
     private static string[] Values(JsonObject save, string arrayName)
     {
         var array = save.GetObject("PlayerStateData")!.GetArray(arrayName);

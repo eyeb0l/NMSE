@@ -209,6 +209,38 @@ public sealed class CatalogueUnlockPortTests
     }
 
     [AvaloniaFact]
+    public void CatalogueEntitlementCanBeLockedInAccountRewards_AndStaysLockedAfterReload()
+    {
+        var (catalogue, save, account) = Create();
+        Row(catalogue, "_specialRows", "SPEC_XOHELMET").Known = true;
+        Assert.Contains("SPEC_XOHELMET", Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"));
+        using var resources = new AvaloniaResourceCatalog();
+        resources.Items.LoadItemsFromJsonDirectory(Path.Combine(ApplicationPaths.Current.ResourcesDirectory, "json"));
+        var rewards = new AccountRewardsPanel(resources, new AccountRewardsDesktopActions(
+            _ => Task.FromResult<string?>(null), (_, _) => Task.CompletedTask, (_, _) => Task.CompletedTask));
+        // Exercise the shared account JSON path without discovering host MXML files.
+        rewards.SetPlatform(NMSE.IO.SaveFileManager.Platform.XboxGamePass);
+        rewards.SetAccountData(account);
+        rewards.LoadData(save);
+        object EntitlementRow()
+        {
+            var tab = Field<object>(rewards, "_platformTab");
+            var rows = (IEnumerable)tab.GetType().GetProperty("AllRows")!.GetValue(tab)!;
+            return rows.Cast<object>().Single(row => (string)row.GetType().GetProperty("Id")!.GetValue(row)! == "^ENT_XO_HELMET");
+        }
+        var row = EntitlementRow();
+        var unlocked = row.GetType().GetProperty("Unlocked")!;
+        Assert.True((bool)unlocked.GetValue(row)!);
+        unlocked.SetValue(row, false);
+        rewards.SaveData(save);
+
+        Assert.DoesNotContain(Values(account.GetObject("UserSettingsData")!, "UnlockedSpecials"),
+            id => id.TrimStart('^').Equals("SPEC_XOHELMET", StringComparison.OrdinalIgnoreCase));
+        rewards.SetAccountData(account);
+        Assert.False((bool)unlocked.GetValue(EntitlementRow())!);
+    }
+
+    [AvaloniaFact]
     public void RewardCanBeRedeemedAndUnredeemedAcrossSavesInOneSession()
     {
         using var resources = new AvaloniaResourceCatalog();
