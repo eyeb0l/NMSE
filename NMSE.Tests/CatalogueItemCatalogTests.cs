@@ -332,6 +332,28 @@ public class CatalogueItemCatalogTests
     }
 
     [Fact]
+    public void CompleteCatalogue_WithoutAccountCountsOnlyWritableMissingState()
+    {
+        string jsonDir = FindResourceJsonDir()
+            ?? throw new DirectoryNotFoundException("Test Resources/json directory is missing.");
+        var db = new GameItemDatabase();
+        db.LoadItemsFromJsonDirectory(jsonDir);
+        var pack = new CatalogueDatabase(jsonDir);
+        var player = new JsonObject();
+        Assert.True(CatalogueCompletionLogic.CountMissingCatalogue(player, null, db, pack) > 0);
+        Assert.True(CatalogueCompletionLogic.CompleteCatalogue(player, null, db, pack) > 0);
+        Assert.True(ArrayContains(player.GetArray("KnownSpecials")!, "^JETS_WORM"));
+        Assert.False(ArrayContains(player.GetArray("KnownProducts")!, "^JETS_WORM"));
+        Assert.Equal(0, CatalogueCompletionLogic.CountMissingCatalogue(player, null, db, pack));
+        Assert.Equal(0, CatalogueCompletionLogic.CompleteCatalogue(player, null, db, pack));
+
+        AccountLogic.SyncJsonArrayEntry(player, "KnownProducts", "^EXPD_FLAG_06E", present: false);
+        Assert.True(CatalogueCompletionLogic.CountMissingCatalogue(player, null, db, pack) > 0);
+        Assert.True(CatalogueCompletionLogic.CompleteCatalogue(player, null, db, pack) > 0);
+        Assert.Equal(0, CatalogueCompletionLogic.CountMissingCatalogue(player, null, db, pack));
+    }
+
+    [Fact]
     public void CompleteCatalogue_WritesBuildingSpecialsToBothButNotSpecialOnly()
     {
         var jsonDir = FindResourceJsonDir();

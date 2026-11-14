@@ -724,6 +724,8 @@ internal static class AccountLogic
     {
         /// <summary>The item ID (with caret prefix as stored in save data).</summary>
         public string Id { get; init; } = "";
+        /// <summary>The reward ID stored in Redeemed* arrays; may differ from the product ID.</summary>
+        public string RewardId { get; init; } = "";
         /// <summary>Human-readable display name for the item.</summary>
         public string Name { get; init; } = "";
         /// <summary>The array the item is currently in (e.g. "RedeemedSeasonRewards").</summary>
@@ -792,6 +794,25 @@ internal static class AccountLogic
         var unlockedPlatform = GetUnlockedSet(userSettings?.GetArray("UnlockedPlatformRewards"));
         var unlockedSpecials = GetUnlockedSet(userSettings?.GetArray("UnlockedSpecials"));
 
+        bool IsRedeemed(RewardProductInfo reward) => reward.Category switch
+        {
+            "season" => redeemedSeason.Contains(reward.RewardId),
+            "twitch" => redeemedTwitch.Contains(reward.RewardId),
+            "platform" => redeemedPlatform.Contains(reward.RewardId),
+            _ => false,
+        };
+
+        static bool ContainsId(HashSet<string> ids, string id) =>
+            ids.Contains(id) || ids.Contains(CatalogueLogic.StripCaretPrefix(id));
+
+        bool IsCategoryUnlocked(RewardProductInfo reward) => reward.Category switch
+        {
+            "season" => ContainsId(unlockedSeason, reward.RewardId),
+            "twitch" => ContainsId(unlockedTwitch, reward.RewardId),
+            "platform" => ContainsId(unlockedPlatform, reward.RewardId),
+            _ => false,
+        };
+
         // --- Reverse / stale check ---
         // A known reward entry without its matching redeemed array may be stale, or it
         // may be an intentional account unlock. Quicksilver-vendor items and other
@@ -806,17 +827,10 @@ internal static class AccountLogic
             foreach (var id in known)
             {
                 string key = CatalogueLogic.EnsureCaretPrefix(id);
-                if (!rewardProducts.TryGetValue(key, out var reward)) continue;
-                if (reward.RedeemedArray == null) continue; // entitlement: no redeem array
-
-                HashSet<string> redeemed = reward.Category switch
-                {
-                    "season" => redeemedSeason,
-                    "twitch" => redeemedTwitch,
-                    "platform" => redeemedPlatform,
-                    _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                };
-                if (redeemed.Contains(reward.RewardId)) continue;
+                if (!rewardProducts.TryGetValue(key, out var sources)) continue;
+                // A product can be earned through several categories. Any redeemed
+                // source, or an entitlement with no redemption step, legitimises it.
+                if (sources.Any(source => source.RedeemedArray == null || IsRedeemed(source))) continue;
 
                 var item = database?.GetItem(CatalogueLogic.StripCaretPrefix(id));
                 if (arrayName == "KnownSpecials" && (item == null || !IsKnownSpecialsItem(item)))
@@ -826,16 +840,13 @@ internal static class AccountLogic
                 if (arrayName == "KnownTech" && (item == null || IsNonTechReward(item)))
                     continue;
 
-                HashSet<string> unlocked = reward.Category switch
-                {
-                    "season" => unlockedSeason,
-                    "twitch" => unlockedTwitch,
-                    "platform" => unlockedPlatform,
-                    _ => unlockedSpecials,
-                };
+                // Prefer an account-unlocked source when offering a repair. Only
+                // UnlockedSpecials stores product IDs; category unlocks use reward IDs.
+                var unlockedSource = sources.FirstOrDefault(IsCategoryUnlocked);
+                var reward = unlockedSource ?? sources[0];
+                if (reward.RedeemedArray == null) continue;
                 bool isAmbiguous = userSettings != null
-                    && (unlocked.Contains(reward.ProductId)
-                        || unlocked.Contains(CatalogueLogic.StripCaretPrefix(reward.ProductId)));
+                    && (unlockedSource != null || ContainsId(unlockedSpecials, key));
                 string name = item?.Name ?? id;
                 string arrayDisplay = arrayName switch
                 {
@@ -846,6 +857,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = id,
+                    RewardId = reward.RewardId,
                     Name = name,
                     CurrentArray = arrayName,
                     MissingArray = reward.RedeemedArray,
@@ -887,21 +899,22 @@ internal static class AccountLogic
         string? RedeemedArray);
 
     /// <summary>
-    /// Builds a map keyed by the product ID stored in Known* arrays. Each entry records
-    /// the reward ID that belongs in the matching Redeemed* array and whether the reward
-    /// has a redeem array at all. Entitlements have no redeem array; their Known* state
-    /// is the owned state.
+    /// Builds a map keyed by the product ID stored in Known* arrays, retaining every
+    /// reward source and its matching Redeemed* array. Entitlements have no redeem
+    /// array; their Known* state is the owned state.
     /// </summary>
-    private static Dictionary<string, RewardProductInfo> BuildRewardProductMap()
+    private static Dictionary<string, List<RewardProductInfo>> BuildRewardProductMap()
     {
-        var map = new Dictionary<string, RewardProductInfo>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, List<RewardProductInfo>>(StringComparer.OrdinalIgnoreCase);
 
         void Add(RewardEntry reward, string category, string? redeemedArray)
         {
             string sourceId = string.IsNullOrEmpty(reward.ProductId) ? reward.Id : reward.ProductId;
             string productId = CatalogueLogic.EnsureCaretPrefix(sourceId);
-            if (productId.Length <= 1 || map.ContainsKey(productId)) return;
-            map[productId] = new RewardProductInfo(reward.Id, productId, category, redeemedArray);
+            if (productId.Length <= 1) return;
+            if (!map.TryGetValue(productId, out var sources))
+                map[productId] = sources = [];
+            sources.Add(new RewardProductInfo(reward.Id, productId, category, redeemedArray));
         }
 
         foreach (var reward in RewardDatabase.SeasonRewards)
@@ -956,6 +969,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownSpecials",
@@ -969,6 +983,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownProducts",
@@ -982,6 +997,7 @@ internal static class AccountLogic
                 issues.Add(new ConsistencyIssue
                 {
                     Id = productId,
+                    RewardId = id,
                     Name = name,
                     CurrentArray = redeemedArrayName,
                     MissingArray = "KnownTech",
@@ -1019,14 +1035,10 @@ internal static class AccountLogic
         var playerState = saveData.GetObject("PlayerStateData");
         if (playerState == null) return;
 
-        if (addToMissing)
-        {
-            SyncJsonArrayEntry(playerState, issue.MissingArray, issue.Id, present: true);
-        }
-        else
-        {
-            SyncJsonArrayEntry(playerState, issue.CurrentArray, issue.Id, present: false);
-        }
+        string targetArray = addToMissing ? issue.MissingArray : issue.CurrentArray;
+        string targetId = targetArray.StartsWith("Redeemed", StringComparison.Ordinal)
+            && !string.IsNullOrEmpty(issue.RewardId) ? issue.RewardId : issue.Id;
+        SyncJsonArrayEntry(playerState, targetArray, targetId, present: addToMissing);
     }
 
     /// <summary>

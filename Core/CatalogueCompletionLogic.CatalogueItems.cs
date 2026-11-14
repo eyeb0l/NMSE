@@ -6,10 +6,11 @@ namespace NMSE.Core;
 internal static partial class CatalogueCompletionLogic
 {
 	/// <summary>
-	/// Returns the number of catalogue completion entries that are still missing.
+	/// Returns the number of actionable catalogue completion entries that are still missing.
 	/// Technology follows the save-known list; products and specials count when either
 	/// the save-known array or the account Seen array contains them. Raw materials use
-	/// the account SeenSubstances list.
+	/// the account SeenSubstances list. Without account data, only required save-known
+	/// writes are counted, including KnownSpecials and both arrays for special buildings.
 	/// </summary>
 	/// <param name="playerState">The save PlayerStateData object.</param>
 	/// <param name="userSettings">The account UserSettingsData object, or null.</param>
@@ -26,6 +27,16 @@ internal static partial class CatalogueCompletionLogic
 		var specials = catalogue.KnownSpecialsForCompletion(items);
 
 		var (haveTech, totalTech) = GetCompletion(playerState, "KnownTech", tech);
+		if (userSettings == null)
+		{
+			// Account-only wiki visibility is unavailable. Count the save state this
+			// action can write, including buildings outside the product completion set.
+			var saveProducts = products.Concat(specials.Where(id => items.GetItem(id)?.IsBuilding == true))
+				.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+			var (haveSaveProducts, totalSaveProducts) = GetCompletion(playerState, "KnownProducts", saveProducts);
+			var (haveSaveSpecials, totalSaveSpecials) = GetCompletion(playerState, "KnownSpecials", specials);
+			return (totalTech - haveTech) + (totalSaveProducts - haveSaveProducts) + (totalSaveSpecials - haveSaveSpecials);
+		}
 		var (haveProducts, totalProducts) = GetKnownOrSeenCompletion(
 			playerState, "KnownProducts", userSettings, "SeenProducts", products);
 		var (haveSpecials, totalSpecials) = GetKnownOrSeenCompletion(

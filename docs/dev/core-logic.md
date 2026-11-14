@@ -71,11 +71,12 @@ reward arrays in `PlayerStateData`. Also backs the Account Rewards consistency c
 Without that, checking and unchecking Redeemed in one session would skip the
 `Known*` cleanup and leave the reward looking redeemed in game.
 
-`CheckConsistencyStructured` maps each Known* reward entry to its correct Redeemed*
-array by reward category, checks season, Twitch and platform redemption, ignores
-entitlement items that have no redeem array, and checks KnownProducts/KnownTech as
-well as KnownSpecials. A known entry that is not redeemed but is unlocked on the
-account is marked ambiguous instead of being treated as definitely stale.
+`CheckConsistencyStructured` retains every season, Twitch and platform reward source
+for each Known* product. Any matching redemption or entitlement without a redemption
+step legitimises the known entry. Category unlocks use reward IDs; `UnlockedSpecials`
+uses product IDs. An unlocked but unredeemed entry is ambiguous, and repairs prefer an
+account-unlocked source. Issues retain both identities so repairs write reward IDs to
+Redeemed* arrays and product IDs to Known* arrays.
 
 ---
 
@@ -190,7 +191,7 @@ Wonders.
 
 | Method | Description |
 |--------|-------------|
-| `CountMissingCatalogue(...)` / `CompleteCatalogue(...)` | Count and complete the catalogue using the game-visible known/seen rules, including all compiled `SeenSubstances` |
+| `CountMissingCatalogue(...)` / `CompleteCatalogue(...)` | Count actionable missing state and complete the catalogue; use game-visible known/seen rules with account data, or required save-known writes without it |
 | `ApplyKnowledgePage(...)` / `ClearKnowledgePage(...)` | Complete or clear one Collected Knowledge page |
 | `ApplyKnowledgePageProgress(...)` | Set page progress from a UI value |
 | `ApplyKnowledgeCompleters(...)` / `ClearKnowledgeCompleters(...)` | Apply or clear the story completers |

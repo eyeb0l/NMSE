@@ -831,11 +831,13 @@ Each tab shows two counters at the bottom:
 
 The <kbd>Complete Catalogue</kbd> button on each Avalonia item page is a separate convenience action. It completes the save-known arrays using the game's item paths and marks the account seen entries needed by the in-game wiki, including `SeenSubstances` for the Materials page. It is not the same as <kbd>Add All</kbd>. The normal Known checkbox and <kbd>Add All</kbd> also never write `SeenSubstances`; raw materials are handled by the Raw Materials tab and by <kbd>Complete Catalogue</kbd>.
 
+If account data is unavailable, <kbd>Complete Catalogue</kbd> completes the save's Known entries only. It stops offering further changes once those are complete; account Seen progress still requires loading account data.
+
 The old per-tab Add Technology / Add Product / Add Special pickers and Remove Selected buttons are replaced by the Known checkbox, the advanced Seen column and the two list actions.
 
 Use the filter box to search names, IDs, categories, descriptions and expedition numbers. Searching for `catalogue` or `counted` shows catalogue-counted items; `not catalogue` or `not counted` shows non-catalogue items. The <kbd>Catalogue only</kbd> checkbox applies the same filter directly.
 
-Export and Import operate on the known entries. The GOTO JSON button remains at the right of the filter row. The completion sub-tabs (Wonders, Collected Knowledge, Fossils, Raw Materials and Discovery Stats) retain their own <kbd>Complete All</kbd> / <kbd>Clear All</kbd> tools.
+Export and Import operate on the known entries. Specials exports also preserve partially known entries, such as buildings whose product state is missing. The GOTO JSON button remains at the right of the filter row. The completion sub-tabs (Wonders, Collected Knowledge, Fossils, Raw Materials and Discovery Stats) retain their own <kbd>Complete All</kbd> / <kbd>Clear All</kbd> tools.
 
 > 💡 **Note:** Names shown as `[?] Name` have no official localisation in the game files and are editor-curated approximations.
 

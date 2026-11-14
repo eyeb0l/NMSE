@@ -55,7 +55,9 @@ inventory transfers and companion egg placement while leaving unloaded panels de
   displayed rows as known. Products and Specials refresh each other for shared buildings.
   Add All/Remove All use the intersection of text and Catalogue only filters. Complete
   Catalogue ignores those filters and includes raw materials. Account-less Seen controls
-  are disabled. Imports use the same unlock rules; exports include fully known rows only.
+  are disabled. Imports use the same unlock rules. Specials exports preserve primary
+  KnownSpecials membership, including partially known buildings. Without account data,
+  Complete Catalogue counts only writable save state and stops prompting once it is done.
 - Catalogue completion uses the extracted story-page indices and source-table-aware
   completion sets. Account seen lists are updated alongside save completion.
 - Account Rewards passes account settings into consistency checks, highlights ambiguous

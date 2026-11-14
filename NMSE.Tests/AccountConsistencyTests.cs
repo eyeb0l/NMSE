@@ -91,6 +91,112 @@ public class AccountConsistencyTests
             && i.Id == "^SWARM_GUN");
     }
 
+    [Theory]
+    [InlineData("RedeemedSeasonRewards", "^EXPD_FLAG_06E")]
+    [InlineData("RedeemedTwitchRewards", "^TWITCH_210")]
+    public void SharedRewardProduct_AcceptsEitherRedemptionSource(string array, string rewardId)
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "KnownSpecials", "^EXPD_FLAG_06E");
+        Add(save, "KnownProducts", "^EXPD_FLAG_06E");
+        Add(save, array, rewardId);
+
+        Assert.Empty(AccountLogic.CheckConsistencyStructured(save, db));
+    }
+
+    [Fact]
+    public void ReverseTwitchRepair_WritesRewardIdAndClearsTheIssue()
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "KnownSpecials", "^S_POSTER29");
+        Add(save, "KnownProducts", "^S_POSTER29");
+        var issue = Assert.Single(AccountLogic.CheckConsistencyStructured(save, db),
+            issue => issue.CurrentArray == "KnownProducts");
+
+        AccountLogic.ResolveConsistencyIssue(save, issue, addToMissing: true);
+
+        Assert.Equal(new[] { "^TWITCH_406" }, Values(save, "RedeemedTwitchRewards"));
+        Assert.Empty(AccountLogic.CheckConsistencyStructured(save, db));
+    }
+
+    [Fact]
+    public void ReverseTwitchRemoval_RemovesProductIdFromKnownArray()
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "KnownProducts", "^S_POSTER29");
+        var issue = Assert.Single(AccountLogic.CheckConsistencyStructured(save, db));
+
+        AccountLogic.ResolveConsistencyIssue(save, issue, addToMissing: false);
+
+        Assert.Empty(Values(save, "KnownProducts"));
+        Assert.Empty(Values(save, "RedeemedTwitchRewards"));
+        Assert.Empty(AccountLogic.CheckConsistencyStructured(save, db));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ForwardTwitchRepair_UsesTheIdBelongingToTheTargetArray(bool add)
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "KnownSpecials", "^S_POSTER29");
+        Add(save, "RedeemedTwitchRewards", "^TWITCH_406");
+        var issue = Assert.Single(AccountLogic.CheckConsistencyStructured(save, db),
+            issue => issue.MissingArray == "KnownProducts");
+
+        AccountLogic.ResolveConsistencyIssue(save, issue, addToMissing: add);
+
+        Assert.Equal(add ? new[] { "^S_POSTER29" } : Array.Empty<string>(), Values(save, "KnownProducts"));
+        Assert.Equal(add ? new[] { "^TWITCH_406" } : Array.Empty<string>(), Values(save, "RedeemedTwitchRewards"));
+    }
+
+    [Theory]
+    [InlineData("^S_POSTER29", "UnlockedTwitchRewards", "^TWITCH_406", "KnownProducts")]
+    [InlineData("^TGA_SHIP01", "UnlockedPlatformRewards", "^TGA_SHIP1", "KnownSpecials")]
+    [InlineData("^EXPD_FLAG_06E", "UnlockedTwitchRewards", "^TWITCH_210", "KnownProducts")]
+    public void ReverseIssue_UsesCategoryRewardIdForAccountUnlocks(string product, string unlockedArray, string reward, string knownArray)
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, knownArray, product);
+        var account = new JsonObject();
+        Add(account, unlockedArray, reward);
+
+        var issue = Assert.Single(AccountLogic.CheckConsistencyStructured(save, db, account));
+        Assert.True(issue.IsAmbiguous);
+        string redeemedArray = unlockedArray.Replace("Unlocked", "Redeemed");
+        Assert.Equal(redeemedArray, issue.MissingArray);
+        AccountLogic.ResolveConsistencyIssue(save, issue, addToMissing: true);
+        Assert.Equal(new[] { reward }, Values(save, redeemedArray));
+    }
+
+    [Fact]
+    public void ProductIdIsAnUnlockOnlyInUnlockedSpecials()
+    {
+        var db = LoadRequiredDatabase();
+        var save = PlayerSave();
+        Add(save, "KnownProducts", "^S_POSTER29");
+        var account = new JsonObject();
+        Add(account, "UnlockedTwitchRewards", "^S_POSTER29");
+        Assert.False(Assert.Single(AccountLogic.CheckConsistencyStructured(save, db, account)).IsAmbiguous);
+
+        Add(account, "UnlockedSpecials", "S_POSTER29");
+        Assert.True(Assert.Single(AccountLogic.CheckConsistencyStructured(save, db, account)).IsAmbiguous);
+    }
+
+    private static string[] Values(JsonObject save, string arrayName)
+    {
+        var array = save.GetObject("PlayerStateData")!.GetArray(arrayName);
+        return array == null ? [] : Enumerable.Range(0, array.Length).Select(i => array.GetString(i)!).ToArray();
+    }
+
+    private static GameItemDatabase LoadRequiredDatabase() => LoadDatabase(
+        FindResourceJsonDir() ?? throw new DirectoryNotFoundException("Test Resources/json directory is missing."));
+
     private static GameItemDatabase LoadDatabase(string jsonDir)
     {
         RewardDatabase.LoadFromJsonDirectory(jsonDir);

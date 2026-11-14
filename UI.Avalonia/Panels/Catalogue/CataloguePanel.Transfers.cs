@@ -51,7 +51,7 @@ public sealed partial class CataloguePanel
         {
             case CatalogueTransferKind.Technologies: root.Set("KnownTechnologies", StringArray(_techRows.Where(row => row.Known == true).Select(row => row.Id))); break;
             case CatalogueTransferKind.Products: root.Set("KnownProducts", StringArray(_productRows.Where(row => row.Known == true).Select(row => row.Id))); break;
-            case CatalogueTransferKind.Specials: root.Set("KnownSpecials", StringArray(_specialRows.Where(row => row.Known == true).Select(row => row.Id))); break;
+            case CatalogueTransferKind.Specials: root.Set("KnownSpecials", StringArray(_playerState == null ? [] : CatalogueLogic.LoadKnownItemIds(_playerState, "KnownSpecials"))); break;
             case CatalogueTransferKind.Words: root.Set("KnownWords", StringArray(_knownWordGroups is null ? [] : CatalogueLogic.CollectKnownWordIds(_knownWordGroups, _words.Words))); break;
             case CatalogueTransferKind.Glyphs:
             {

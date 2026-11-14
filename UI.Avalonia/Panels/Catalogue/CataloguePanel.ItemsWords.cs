@@ -117,7 +117,7 @@ public sealed partial class CataloguePanel
         int missing = CatalogueCompletionLogic.CountMissingCatalogue(_playerState, _userSettings, _items, _catalogue);
         if (missing == 0) return;
         if (ConfirmAsync == null || !await ConfirmAsync(UiStrings.Get("discovery.complete_catalogue"), UiStrings.Format("discovery.complete_catalogue_confirm", missing), default)) return;
-        CatalogueCompletionLogic.CompleteCatalogue(_playerState, _userSettings, _items, _catalogue);
+        if (CatalogueCompletionLogic.CompleteCatalogue(_playerState, _userSettings, _items, _catalogue) == 0) return;
         ItemStateChanged();
         foreach (var panel in _completionPanels) panel.LoadData(_saveData);
     }

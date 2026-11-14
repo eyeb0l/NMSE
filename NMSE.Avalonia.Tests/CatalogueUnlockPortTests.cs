@@ -167,6 +167,48 @@ public sealed class CatalogueUnlockPortTests
     }
 
     [AvaloniaFact]
+    public async Task CompleteWithoutAccount_DoesNotPromptOrModifyAgain()
+    {
+        var (panel, save, _) = Create(account: false);
+        int prompts = 0, changes = 0;
+        panel.ConfirmAsync = (_, _, _) => { prompts++; return Task.FromResult(true); };
+        panel.DataModified += (_, _) => changes++;
+        await (Task)Invoke(panel, "CompleteItemsAsync", CatalogueTransferKind.Specials)!;
+        string completed = save.ToString();
+        Assert.Equal(1, prompts);
+        Assert.Equal(1, changes);
+
+        await (Task)Invoke(panel, "CompleteItemsAsync", CatalogueTransferKind.Specials)!;
+
+        Assert.Equal(1, prompts);
+        Assert.Equal(1, changes);
+        Assert.Equal(completed, save.ToString());
+        Assert.DoesNotContain("^JETS_WORM", Values(save.GetObject("PlayerStateData")!, "KnownProducts"));
+    }
+
+    [AvaloniaFact]
+    public void ExportSpecials_PreservesPartialEntriesFromPrimaryArray()
+    {
+        var (panel, save, _) = Create("""{"KnownSpecials":["^EXPD_FLAG_06E","^LEGACY_SPECIAL"]}""");
+        Assert.Null(Row(panel, "_specialRows", "EXPD_FLAG_06E").Known);
+        Field<TextBox>(panel, "_specialFilter").Text = "nothing matches";
+        string before = save.ToString();
+        var exported = (JsonObject)Invoke(panel, "BuildExport", CatalogueTransferKind.Specials)!;
+        Assert.Equal(new[] { "EXPD_FLAG_06E", "LEGACY_SPECIAL" }, Values(exported, "KnownSpecials"));
+        Assert.Equal(before, save.ToString());
+
+        var (importedPanel, importedSave, _) = Create();
+        Assert.Equal(1, Invoke(importedPanel, "ImportItems", exported, CatalogueTransferKind.Specials));
+        Assert.Contains("^EXPD_FLAG_06E", Values(importedSave.GetObject("PlayerStateData")!, "KnownSpecials"));
+        Assert.Contains("^EXPD_FLAG_06E", Values(importedSave.GetObject("PlayerStateData")!, "KnownProducts"));
+
+        var (productOnly, _, _) = Create("""{"KnownProducts":["^EXPD_FLAG_06E"]}""");
+        Assert.Null(Row(productOnly, "_specialRows", "EXPD_FLAG_06E").Known);
+        var noSpecials = (JsonObject)Invoke(productOnly, "BuildExport", CatalogueTransferKind.Specials)!;
+        Assert.Empty(Values(noSpecials, "KnownSpecials"));
+    }
+
+    [AvaloniaFact]
     public void RewardCanBeRedeemedAndUnredeemedAcrossSavesInOneSession()
     {
         using var resources = new AvaloniaResourceCatalog();
